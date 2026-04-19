@@ -2,25 +2,25 @@
 /* ============================================================
    TAOSCAN PRO — app.js
    Polygon.io OHLCV · Client-side RSI/EMA/MACD/Volume
-   TradingView Lightweight Charts · Groq AI summaries
+   TradingView Lightweight Charts · Gemini AI summaries
    ============================================================ */
 
 // ── CONFIG ────────────────────────────────────────────────────
 const CONFIG = {
   load() {
     this.polygonKey = localStorage.getItem('tsp_polygon') || '';
-    this.groqKey    = localStorage.getItem('tsp_groq') || '';
+    this.geminiKey  = localStorage.getItem('tsp_gemini') || '';
     this.proxyUrl   = localStorage.getItem('tsp_proxy') || '';
   },
-  save(poly, groq, proxy) {
+  save(poly, gemini, proxy) {
     localStorage.setItem('tsp_polygon', poly);
-    localStorage.setItem('tsp_groq', groq);
+    localStorage.setItem('tsp_gemini', gemini);
     localStorage.setItem('tsp_proxy', proxy);
     this.polygonKey = poly;
-    this.groqKey    = groq;
+    this.geminiKey  = gemini;
     this.proxyUrl   = proxy;
   },
-  polygonKey: '', groqKey: '', proxyUrl: ''
+  polygonKey: '', geminiKey: '', proxyUrl: ''
 };
 CONFIG.load();
 
@@ -582,14 +582,14 @@ async function runScreenerScan() {
   textEl.style.opacity = '1';
 }
 
-// ── GROQ AI SUMMARY ───────────────────────────────────────────
+// ── GEMINI AI SUMMARY ─────────────────────────────────────────
 async function generateAISummary() {
   if (!STATE.activeSymbol) {
     UI.toast('Select a ticker first', true); return;
   }
-  if (!CONFIG.groqKey) {
+  if (!CONFIG.geminiKey) {
     openSettings();
-    UI.toast('Add your Groq API key in Settings', true);
+    UI.toast('Add your Gemini API key in Settings', true);
     return;
   }
 
@@ -604,8 +604,8 @@ async function generateAISummary() {
   status.textContent = 'Generating...';
   content.innerHTML  = '<span class="ai-typing">Analysing indicators</span>';
 
-  const overall  = Ind.overall(ind);
-  const tfLabel  = STATE.activeTf <= 10 ? 'intraday' : STATE.activeTf <= 30 ? '1-month' : STATE.activeTf <= 90 ? '3-month' : '1-year';
+  const overall = Ind.overall(ind);
+  const tfLabel = STATE.activeTf <= 10 ? 'intraday' : STATE.activeTf <= 30 ? '1-month' : STATE.activeTf <= 90 ? '3-month' : '1-year';
 
   const prompt = `You are a sharp technical analyst. In 3 concise sentences, give a plain English trade summary for ${STATE.activeSymbol} based on these ${tfLabel} indicators:
 
@@ -619,25 +619,24 @@ Overall composite signal: ${overall}
 Be direct and specific. Mention key price levels implied by the EMAs. Note momentum direction and any divergences. End with a clear bias and key level to watch.`;
 
   try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${CONFIG.geminiKey}`;
+    const res = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + CONFIG.groqKey
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'llama3-8b-8192',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 220,
-        temperature: 0.25
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.25,
+          maxOutputTokens: 300
+        }
       })
     });
     if (!res.ok) {
       const e = await res.json();
-      throw new Error(e.error?.message || 'Groq error ' + res.status);
+      throw new Error(e.error?.message || 'Gemini error ' + res.status);
     }
     const data = await res.json();
-    const text = data.choices?.[0]?.message?.content || 'No response generated.';
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated.';
     content.innerHTML = `<div class="ai-text">${text}</div>`;
     status.textContent = 'Analysis complete';
   } catch (e) {
@@ -669,7 +668,7 @@ async function loadMarketPills() {
 // ── SETTINGS ─────────────────────────────────────────────────
 function openSettings() {
   document.getElementById('polygonKey').value = CONFIG.polygonKey;
-  document.getElementById('groqKey').value    = CONFIG.groqKey;
+  document.getElementById('geminiKey').value  = CONFIG.geminiKey;
   document.getElementById('proxyUrl').value   = CONFIG.proxyUrl;
   document.getElementById('settingsModal').classList.add('open');
 }
@@ -697,10 +696,10 @@ function init() {
 
   // Save config
   document.getElementById('saveConfig').addEventListener('click', () => {
-    const poly  = document.getElementById('polygonKey').value.trim();
-    const groq  = document.getElementById('groqKey').value.trim();
-    const proxy = document.getElementById('proxyUrl').value.trim();
-    CONFIG.save(poly, groq, proxy);
+    const poly   = document.getElementById('polygonKey').value.trim();
+    const gemini = document.getElementById('geminiKey').value.trim();
+    const proxy  = document.getElementById('proxyUrl').value.trim();
+    CONFIG.save(poly, gemini, proxy);
     closeSettings();
     UI.toast('Configuration saved ✓');
     UI.apiStatus(!!poly);
