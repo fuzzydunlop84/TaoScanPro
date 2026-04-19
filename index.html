@@ -24,9 +24,9 @@
         <p class="config-hint">Free at <a href="https://polygon.io" target="_blank">polygon.io</a> — 5 calls/min on free tier</p>
       </div>
       <div class="config-section">
-        <label class="config-label">Groq API Key <span class="config-opt">optional — for AI summaries</span></label>
-        <input type="password" class="config-input" id="groqKey" placeholder="Your Groq API key...">
-        <p class="config-hint">Free at <a href="https://console.groq.com" target="_blank">console.groq.com</a></p>
+        <label class="config-label">Gemini API Key <span class="config-opt">optional — for AI summaries</span></label>
+        <input type="password" class="config-input" id="geminiKey" placeholder="Your Gemini API key...">
+        <p class="config-hint">Free at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com</a> — uses gemini-2.0-flash</p>
       </div>
       <div class="config-section">
         <label class="config-label">Cloudflare Worker Proxy URL <span class="config-opt">optional</span></label>
@@ -245,7 +245,7 @@
         <div class="ai-panel">
           <div class="panel-hd">
             <span class="panel-hd-title">AI Analysis</span>
-            <span class="ai-model-tag">Groq · LLaMA-3</span>
+            <span class="ai-model-tag">Google · Gemini 2.0 Flash</span>
           </div>
           <div class="ai-controls">
             <button class="btn-analyze" id="btnAnalyze" onclick="generateAISummary()">Generate Summary</button>
