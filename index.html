@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaoScan Pro — Technical Analysis Engine</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-overlay" id="settingsModal" onclick="if(event.target===this)closeSettings()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">System Configuration</span>
+      <button class="modal-close" onclick="closeSettings()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="config-section">
+        <label class="config-label">Polygon.io API Key <span class="config-req">required</span></label>
+        <input type="password" class="config-input" id="polygonKey" placeholder="Your free Polygon.io API key...">
+        <p class="config-hint">Free at <a href="https://polygon.io" target="_blank">polygon.io</a> — 5 calls/min on free tier</p>
+      </div>
+      <div class="config-section">
+        <label class="config-label">Groq API Key <span class="config-opt">optional — for AI summaries</span></label>
+        <input type="password" class="config-input" id="groqKey" placeholder="Your Groq API key...">
+        <p class="config-hint">Free at <a href="https://console.groq.com" target="_blank">console.groq.com</a></p>
+      </div>
+      <div class="config-section">
+        <label class="config-label">Cloudflare Worker Proxy URL <span class="config-opt">optional</span></label>
+        <input type="text" class="config-input" id="proxyUrl" placeholder="https://your-worker.workers.dev">
+        <p class="config-hint">Routes API calls to bypass CORS on GitHub Pages. See worker.js</p>
+      </div>
+      <button class="btn-save-config" id="saveConfig">Save Configuration</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOOLTIP -->
+<div class="tooltip-overlay" id="tooltipOverlay" onclick="closeTooltip()">
+  <div class="tooltip-box" onclick="event.stopPropagation()">
+    <div class="tooltip-title" id="tooltipTitle"></div>
+    <div class="tooltip-text" id="tooltipText"></div>
+    <button class="tooltip-close" onclick="closeTooltip()">Got it</button>
+  </div>
+</div>
+
+<div class="app-shell">
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-tabs">
+      <div class="stab active" onclick="switchTab('watchlist')">Watchlist</div>
+      <div class="stab" onclick="switchTab('screener')">Screener</div>
+    </div>
+
+    <!-- WATCHLIST TAB -->
+    <div class="sidebar-panel active" id="panel-watchlist">
+      <div class="wl-add-row">
+        <input type="text" class="wl-input" id="addTickerInput" placeholder="Add ticker e.g. AAPL" maxlength="6">
+        <button class="btn-add" id="btnAddTicker">+</button>
+      </div>
+      <div class="sidebar-list" id="tickerList"></div>
+    </div>
+
+    <!-- SCREENER TAB -->
+    <div class="sidebar-panel" id="panel-screener">
+      <div class="screener-controls">
+        <div class="ctrl-group">
+          <span class="ctrl-label">Preset Scan</span>
+          <select class="ctrl-select" id="scanPreset">
+            <option value="rsi_oversold">RSI Oversold (&lt;30)</option>
+            <option value="rsi_overbought">RSI Overbought (&gt;70)</option>
+            <option value="macd_bullish">MACD Bullish Cross</option>
+            <option value="macd_bearish">MACD Bearish Cross</option>
+            <option value="above_ema20">Above EMA 20</option>
+            <option value="below_ema20">Below EMA 20</option>
+            <option value="volume_surge">Volume Surge (1.5×)</option>
+            <option value="golden_cross">Golden Cross</option>
+          </select>
+        </div>
+        <button class="scan-btn" id="btnScan" onclick="runScreenerScan()">
+          <span id="scanBtnText">▶ SCAN</span>
+        </button>
+      </div>
+      <div class="scan-results-header">
+        <span class="sr-label">Results</span>
+        <span class="sr-count" id="scanCount">—</span>
+      </div>
+      <div class="sidebar-list" id="scanResults">
+        <div class="sidebar-empty">Select a preset and click SCAN.<br>Scans your watchlist.</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <div class="main-content">
+    <header>
+      <div class="logo-group">
+        <div class="logo">TaoScan<span class="logo-pro"> Pro</span></div>
+        <div class="tagline">The market speaks. Are you listening?</div>
+      </div>
+      <div class="header-right">
+        <div class="market-pills">
+          <div class="market-pill" id="pill-spy">
+            <span class="pill-sym">SPY</span>
+            <span class="pill-val" id="spy-val">—</span>
+          </div>
+          <div class="market-pill" id="pill-qqq">
+            <span class="pill-sym">QQQ</span>
+            <span class="pill-val" id="qqq-val">—</span>
+          </div>
+        </div>
+        <div class="api-status-group">
+          <span class="api-dot" id="apiDot"></span>
+          <span class="api-label" id="apiLabel">NO KEY</span>
+        </div>
+        <button class="btn-header" onclick="openSettings()">⚙ Settings</button>
+      </div>
+    </header>
+
+    <main>
+
+      <!-- CHART SECTION -->
+      <div class="chart-section">
+        <div class="chart-topbar">
+          <div class="chart-symbol-group">
+            <span class="chart-symbol" id="chartSymbol">Select a ticker</span>
+            <span class="chart-price" id="chartPrice"></span>
+            <span class="chart-change" id="chartChange"></span>
+          </div>
+          <div class="chart-controls">
+            <div class="tf-group">
+              <button class="tf-btn" data-tf="5">5D</button>
+              <button class="tf-btn active" data-tf="30">1M</button>
+              <button class="tf-btn" data-tf="90">3M</button>
+              <button class="tf-btn" data-tf="180">6M</button>
+              <button class="tf-btn" data-tf="365">1Y</button>
+            </div>
+            <div class="ov-group">
+              <button class="ov-btn active" data-ov="ema20">EMA20</button>
+              <button class="ov-btn active" data-ov="ema50">EMA50</button>
+              <button class="ov-btn active" data-ov="ema200">EMA200</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- MAIN CANDLE CHART -->
+        <div class="candle-chart-wrap" id="mainChart"></div>
+
+        <!-- RSI + MACD SUB-CHARTS -->
+        <div class="sub-charts-row">
+          <div class="sub-chart-panel">
+            <div class="sub-chart-header">
+              <span>RSI (14)</span>
+              <span class="sub-chart-val" id="rsiCurrentVal">—</span>
+            </div>
+            <div class="sub-chart-body" id="rsiChart"></div>
+          </div>
+          <div class="sub-chart-panel">
+            <div class="sub-chart-header">
+              <span>MACD (12, 26, 9)</span>
+              <span class="sub-chart-val" id="macdCurrentVal">—</span>
+            </div>
+            <div class="sub-chart-body" id="macdChart"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ANALYSIS ROW -->
+      <div class="analysis-row">
+
+        <!-- INDICATORS PANEL -->
+        <div class="indicators-panel">
+          <div class="panel-hd">
+            <span class="panel-hd-title">Indicators</span>
+            <span class="panel-hd-sym" id="indSymLabel">—</span>
+          </div>
+
+          <div class="ind-grid">
+            <div class="ind-box">
+              <div class="ind-lbl">RSI (14)</div>
+              <div class="ind-val" id="ib-rsi">—</div>
+              <div class="rsi-gauge-bg"><div class="rsi-gauge-fill" id="rsiFill"></div></div>
+              <div class="ind-sig" id="ib-rsi-sig">—</div>
+            </div>
+            <div class="ind-box">
+              <div class="ind-lbl">EMA 20</div>
+              <div class="ind-val" id="ib-ema20">—</div>
+              <div class="ind-sig" id="ib-ema20-sig">—</div>
+            </div>
+            <div class="ind-box">
+              <div class="ind-lbl">EMA 50</div>
+              <div class="ind-val" id="ib-ema50">—</div>
+              <div class="ind-sig" id="ib-ema50-sig">—</div>
+            </div>
+            <div class="ind-box">
+              <div class="ind-lbl">EMA 200</div>
+              <div class="ind-val" id="ib-ema200">—</div>
+              <div class="ind-sig" id="ib-ema200-sig">—</div>
+            </div>
+            <div class="ind-box">
+              <div class="ind-lbl">MACD Line</div>
+              <div class="ind-val" id="ib-macd">—</div>
+              <div class="ind-sig" id="ib-macd-sig">—</div>
+            </div>
+            <div class="ind-box">
+              <div class="ind-lbl">MACD Hist</div>
+              <div class="ind-val" id="ib-macdh">—</div>
+              <div class="ind-sig" id="ib-macdh-sig">—</div>
+            </div>
+            <div class="ind-box">
+              <div class="ind-lbl">Volume</div>
+              <div class="ind-val" id="ib-vol">—</div>
+              <div class="ind-sig" id="ib-vol-sig">—</div>
+            </div>
+            <div class="ind-box">
+              <div class="ind-lbl">Vol / 20d Avg</div>
+              <div class="ind-val" id="ib-volavg">—</div>
+              <div class="ind-sig" id="ib-volavg-sig">—</div>
+            </div>
+          </div>
+
+          <div class="overall-sig-box">
+            <div class="os-label">Overall Signal</div>
+            <div class="os-val" id="overallSignal">—</div>
+          </div>
+
+          <div class="ohlcv-block">
+            <div class="ohlcv-title">Last Candle</div>
+            <table class="ohlcv-table">
+              <tr><td>Open</td><td id="ohlc-o">—</td></tr>
+              <tr><td>High</td><td id="ohlc-h">—</td></tr>
+              <tr><td>Low</td><td id="ohlc-l">—</td></tr>
+              <tr><td>Close</td><td id="ohlc-c">—</td></tr>
+              <tr><td>Volume</td><td id="ohlc-v">—</td></tr>
+              <tr><td>Date</td><td id="ohlc-d">—</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- AI PANEL -->
+        <div class="ai-panel">
+          <div class="panel-hd">
+            <span class="panel-hd-title">AI Analysis</span>
+            <span class="ai-model-tag">Groq · LLaMA-3</span>
+          </div>
+          <div class="ai-controls">
+            <button class="btn-analyze" id="btnAnalyze" onclick="generateAISummary()">Generate Summary</button>
+            <div class="ai-status-text" id="aiStatus"></div>
+          </div>
+          <div class="ai-output" id="aiContent">
+            <div class="ai-placeholder">Select a ticker then click Generate Summary for a plain English AI trade analysis based on current indicators.</div>
+          </div>
+        </div>
+
+      </div><!-- /analysis-row -->
+
+      <div class="page-footer">
+        <div class="footer-symbol">道</div>
+        <div class="footer-name">TaoScan Pro</div>
+        <div class="footer-legal">For informational purposes only. Not financial advice. Always do your own research. Trading involves significant risk of capital loss.</div>
+      </div>
+
+    </main>
+  </div><!-- /main-content -->
+
+</div><!-- /app-shell -->
+
+<!-- LOADING -->
+<div class="loading-overlay" id="loadingOverlay" style="display:none">
+  <div class="loading-box">
+    <div class="loading-spinner"></div>
+    <div class="loading-label" id="loadingText">Fetching market data...</div>
+  </div>
+</div>
+
+<div class="save-toast" id="saveToast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
