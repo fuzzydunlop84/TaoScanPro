@@ -381,7 +381,7 @@ const UI = {
       `;
       row.addEventListener('click', e => {
         if (e.target.classList.contains('tr-del')) removeFromWatchlist(e.target.dataset.sym);
-        else loadSymbol(sym);
+        else { loadSymbol(sym); closeSidebar(); }
       });
       list.appendChild(row);
     });
@@ -548,6 +548,16 @@ async function loadMarketPills() {
 function openSettings()  { document.getElementById('settingsModal').classList.add('open'); }
 function closeSettings() { document.getElementById('settingsModal').classList.remove('open'); }
 function closeTooltip()  { document.getElementById('tooltipOverlay').classList.remove('open'); }
+
+// ── SIDEBAR TOGGLE (mobile) ───────────────────────────────────
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('visible');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('visible');
+}
 
 // ── SIDEBAR TABS ──────────────────────────────────────────────
 function switchTab(tab) {
