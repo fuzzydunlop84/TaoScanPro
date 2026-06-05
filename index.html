@@ -38,6 +38,8 @@
   </div>
 </div>
 
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
 <div class="app-shell">
 
   <!-- ── SIDEBAR ── -->
@@ -94,6 +96,7 @@
         <div class="tagline">The market speaks. Are you listening?</div>
       </div>
       <div class="header-right">
+        <button class="btn-menu" id="btnMenu" onclick="toggleSidebar()">☰ Watchlist</button>
         <div class="market-pills">
           <div class="market-pill" id="pill-spy">
             <span class="pill-sym">SPY</span>
