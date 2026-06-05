@@ -18,22 +18,13 @@
       <button class="modal-close" onclick="closeSettings()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="config-section">
-        <label class="config-label">Polygon.io API Key <span class="config-req">required</span></label>
-        <input type="password" class="config-input" id="polygonKey" placeholder="Your free Polygon.io API key...">
-        <p class="config-hint">Free at <a href="https://polygon.io" target="_blank">polygon.io</a> — 5 calls/min on free tier</p>
+      <div class="config-info">
+        <div class="config-info-title">API keys are configured in your Cloudflare Worker</div>
+        <div class="config-info-row"><span class="config-info-key">POLYGON_KEY</span><span class="config-info-val">Set as a secret in your Worker dashboard</span></div>
+        <div class="config-info-row"><span class="config-info-key">GEMINI_KEY</span><span class="config-info-val">Set as a secret in your Worker dashboard</span></div>
+        <div class="config-info-row"><span class="config-info-key">Worker URL</span><span class="config-info-val">Hardcoded in app.js</span></div>
       </div>
-      <div class="config-section">
-        <label class="config-label">Gemini API Key <span class="config-opt">optional — for AI summaries</span></label>
-        <input type="password" class="config-input" id="geminiKey" placeholder="Your Gemini API key...">
-        <p class="config-hint">Free at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com</a> — uses gemini-2.0-flash</p>
-      </div>
-      <div class="config-section">
-        <label class="config-label">Cloudflare Worker Proxy URL <span class="config-opt">optional</span></label>
-        <input type="text" class="config-input" id="proxyUrl" placeholder="https://your-worker.workers.dev">
-        <p class="config-hint">Routes API calls to bypass CORS on GitHub Pages. See worker.js</p>
-      </div>
-      <button class="btn-save-config" id="saveConfig">Save Configuration</button>
+      <button class="btn-save-config" id="saveConfig" onclick="closeSettings()">Close</button>
     </div>
   </div>
 </div>
