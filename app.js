@@ -6,7 +6,6 @@
    ============================================================ */
 
 // ── WORKER URL ────────────────────────────────────────────────
-// Replace this with your Cloudflare Worker URL once deployed
 const WORKER_URL = 'https://taoscanpro.waddellb.workers.dev';
 
 // ── STATE ─────────────────────────────────────────────────────
@@ -71,6 +70,39 @@ const Ind = {
       out[i] = vols.slice(i-period+1, i+1).reduce((a,b) => a+b, 0) / period;
     }
     return out;
+  },
+
+  calcATR(highs, lows, closes, period = 14) {
+    const trs = [];
+    for (let i = 1; i < closes.length; i++) {
+      const hl = highs[i] - lows[i];
+      const hc = Math.abs(highs[i] - closes[i-1]);
+      const lc = Math.abs(lows[i] - closes[i-1]);
+      trs.push(Math.max(hl, hc, lc));
+    }
+    if (trs.length < period) return trs[trs.length - 1] || 0;
+    let atr = trs.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    for (let i = period; i < trs.length; i++) {
+      atr = (atr * (period - 1) + trs[i]) / period;
+    }
+    return atr;
+  },
+
+  calcBollingerBandwidth(closes, period = 20, stdDevMult = 2) {
+    const bandwidthHistory = [];
+    let bandwidth = null;
+    for (let i = period - 1; i < closes.length; i++) {
+      const slice = closes.slice(i - period + 1, i + 1);
+      const mean = slice.reduce((a, b) => a + b, 0) / period;
+      const variance = slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / period;
+      const std = Math.sqrt(variance);
+      const upper = mean + stdDevMult * std;
+      const lower = mean - stdDevMult * std;
+      const bw = mean > 0 ? (upper - lower) / mean : 0;
+      bandwidthHistory.push(bw);
+      bandwidth = bw;
+    }
+    return { bandwidth, bandwidthHistory };
   },
 
   compute(candles) {
@@ -140,18 +172,18 @@ const API = {
       const e = await res.json().catch(() => ({}));
       throw new Error(e.error || `Gemini error ${res.status}`);
     }
-    return res.json(); // { text: "..." }
+    return res.json();
   },
 
   async health() {
     const res = await fetch(this.base() + '/health');
-    return res.json(); // { ok, polygon, gemini }
+    return res.json();
   },
 
   async aggs(symbol, days) {
     const end   = new Date();
     const start = new Date();
-    start.setDate(start.getDate() - days - 250); // warmup for EMA200
+    start.setDate(start.getDate() - days - 250); 
     const from     = start.toISOString().slice(0,10);
     const to       = end.toISOString().slice(0,10);
     const timespan = days <= 10 ? 'hour' : 'day';
@@ -208,537 +240,4 @@ const Charts = {
 
     this.mainSeries = this.main.addCandlestickSeries({
       upColor: '#4caf7d', downColor: '#c94040',
-      borderUpColor: '#4caf7d', borderDownColor: '#c94040',
-      wickUpColor: '#4caf7d', wickDownColor: '#c94040'
-    });
-    this.ema20S  = this.main.addLineSeries({ color: 'rgba(74,127,168,0.9)',  lineWidth: 1, title: 'EMA20'  });
-    this.ema50S  = this.main.addLineSeries({ color: 'rgba(200,136,42,0.8)',  lineWidth: 1, title: 'EMA50'  });
-    this.ema200S = this.main.addLineSeries({ color: 'rgba(201,64,64,0.7)',   lineWidth: 1, title: 'EMA200' });
-    this.rsiS       = this.rsi.addLineSeries({ color: '#7a8fa6', lineWidth: 1.5 });
-    this.macdLineS  = this.macd.addLineSeries({ color: '#4a7fa8', lineWidth: 1.5, title: 'MACD'   });
-    this.macdSigS   = this.macd.addLineSeries({ color: '#c8882a', lineWidth: 1.5, title: 'Signal' });
-    this.macdHistS  = this.macd.addHistogramSeries({ priceFormat: { type: 'price', precision: 4 } });
-
-    const ro = new ResizeObserver(() => this.resize());
-    ['mainChart','rsiChart','macdChart'].forEach(id => ro.observe(document.getElementById(id)));
-  },
-
-  resize() {
-    const el = id => document.getElementById(id);
-    if (this.main) this.main.resize(el('mainChart').offsetWidth, el('mainChart').offsetHeight);
-    if (this.rsi)  this.rsi.resize(el('rsiChart').offsetWidth,  el('rsiChart').offsetHeight);
-    if (this.macd) this.macd.resize(el('macdChart').offsetWidth, el('macdChart').offsetHeight);
-  },
-
-  toSeries(arr, candles, transform) {
-    return arr
-      .map((v,i) => (v != null && candles[i]) ? { time: candles[i].time, ...transform(v) } : null)
-      .filter(Boolean);
-  },
-
-  render(candles, ind) {
-    if (!candles?.length) return;
-    const toVal = v => ({ value: v });
-    this.mainSeries.setData(candles);
-    this.ema20S.setData(STATE.overlays.ema20   ? this.toSeries(ind.ema20Arr,  candles, toVal) : []);
-    this.ema50S.setData(STATE.overlays.ema50   ? this.toSeries(ind.ema50Arr,  candles, toVal) : []);
-    this.ema200S.setData(STATE.overlays.ema200 ? this.toSeries(ind.ema200Arr, candles, toVal) : []);
-    this.rsiS.setData(this.toSeries(ind.rsiArr, candles, toVal));
-    this.macdLineS.setData(this.toSeries(ind.macdArr,    candles, toVal));
-    this.macdSigS.setData(this.toSeries(ind.macdSigArr,  candles, toVal));
-    this.macdHistS.setData(this.toSeries(ind.macdHistArr, candles, v => ({
-      value: v, color: v >= 0 ? 'rgba(76,175,125,0.65)' : 'rgba(201,64,64,0.65)'
-    })));
-    this.main.timeScale().fitContent();
-  }
-};
-
-// ── UI ────────────────────────────────────────────────────────
-const UI = {
-  fmt: (n, d=2) => n == null ? '—' : Number(n).toFixed(d),
-  fmtVol(n) {
-    if (!n) return '—';
-    if (n >= 1e9) return (n/1e9).toFixed(1)+'B';
-    if (n >= 1e6) return (n/1e6).toFixed(1)+'M';
-    if (n >= 1e3) return (n/1e3).toFixed(1)+'K';
-    return String(n);
-  },
-  set(id, val)     { const el = document.getElementById(id); if (el) el.textContent = val; },
-  setSig(id, text, cls) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.textContent = text;
-    el.className = 'ind-sig ' + (cls || '');
-  },
-  toast(msg, isError) {
-    const el = document.getElementById('saveToast');
-    el.textContent = msg;
-    el.style.borderColor = isError ? 'var(--red-dim)' : 'var(--sheen)';
-    el.style.color = isError ? 'var(--red)' : 'var(--silver)';
-    el.classList.add('show');
-    setTimeout(() => el.classList.remove('show'), 3000);
-  },
-  loading(show, msg) {
-    document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
-    if (msg) document.getElementById('loadingText').textContent = msg;
-  },
-  workerStatus(ok, missing) {
-    const dot = document.getElementById('apiDot');
-    const lbl = document.getElementById('apiLabel');
-    if (WORKER_URL.includes('YOUR_WORKER')) { dot.className = 'api-dot';     lbl.textContent = 'Worker not set'; return; }
-    if (ok && !missing)                     { dot.className = 'api-dot ok';  lbl.textContent = 'Connected';      return; }
-    if (ok && missing)                      { dot.className = 'api-dot err'; lbl.textContent = 'Missing secrets'; return; }
-    dot.className = 'api-dot err'; lbl.textContent = 'Worker error';
-  },
-
-  updateIndicators(ind) {
-    const { price, rsi, ema20, ema50, ema200, macd, macdSig, macdHist, vol, volAvg } = ind;
-
-    this.set('ib-rsi', this.fmt(rsi));
-    if (rsi != null) {
-      document.getElementById('rsiFill').style.width = Math.min(100, rsi) + '%';
-      this.setSig('ib-rsi-sig',
-        rsi < 30 ? 'Oversold' : rsi > 70 ? 'Overbought' : 'Neutral',
-        rsi < 30 ? 'bull'     : rsi > 70 ? 'bear'        : 'neutral');
-    }
-    const aboveBelow = (p, e, id, sigId) => {
-      this.set(id, '$' + this.fmt(e));
-      this.setSig(sigId, p && e ? (p > e ? 'Price above' : 'Price below') : '—',
-        p && e ? (p > e ? 'bull' : 'bear') : '');
-    };
-    aboveBelow(price, ema20,  'ib-ema20',  'ib-ema20-sig');
-    aboveBelow(price, ema50,  'ib-ema50',  'ib-ema50-sig');
-    aboveBelow(price, ema200, 'ib-ema200', 'ib-ema200-sig');
-
-    this.set('ib-macd', this.fmt(macd, 4));
-    this.setSig('ib-macd-sig',
-      macd != null && macdSig != null ? (macd > macdSig ? 'Above signal — bull' : 'Below signal — bear') : '—',
-      macd != null && macdSig != null ? (macd > macdSig ? 'bull' : 'bear') : '');
-
-    this.set('ib-macdh', this.fmt(macdHist, 4));
-    this.setSig('ib-macdh-sig',
-      macdHist != null ? (macdHist > 0 ? 'Positive' : 'Negative') : '—',
-      macdHist != null ? (macdHist > 0 ? 'bull' : 'bear') : '');
-
-    this.set('ib-vol', this.fmtVol(vol));
-    this.setSig('ib-vol-sig', '—', '');
-
-    const ratio = vol && volAvg ? vol / volAvg : null;
-    this.set('ib-volavg', ratio ? ratio.toFixed(2) + '×' : '—');
-    if (ratio) this.setSig('ib-volavg-sig',
-      ratio > 1.5 ? 'Volume surge' : ratio > 1 ? 'Above average' : 'Below average',
-      ratio > 1.5 ? 'bull' : 'neutral');
-
-    const ov   = Ind.overall(ind);
-    const ovEl = document.getElementById('overallSignal');
-    if (ovEl) { ovEl.textContent = ov; ovEl.className = 'os-val ' + ov.toLowerCase(); }
-
-    this.set('rsiCurrentVal',  this.fmt(rsi));
-    this.set('macdCurrentVal', this.fmt(macd, 4));
-  },
-
-  updateOHLCV(candles) {
-    if (!candles?.length) return;
-    const c = candles[candles.length-1];
-    this.set('ohlc-o', '$' + this.fmt(c.open));
-    this.set('ohlc-h', '$' + this.fmt(c.high));
-    this.set('ohlc-l', '$' + this.fmt(c.low));
-    this.set('ohlc-c', '$' + this.fmt(c.close));
-    this.set('ohlc-v', this.fmtVol(c.volume));
-    this.set('ohlc-d', new Date(c.time * 1000).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }));
-  },
-
-  updateChartHeader(sym, price, changePct) {
-    this.set('chartSymbol', sym);
-    this.set('chartPrice',  price ? '$' + this.fmt(price) : '');
-    this.set('indSymLabel', sym);
-    const chEl = document.getElementById('chartChange');
-    if (chEl) {
-      if (changePct != null) {
-        chEl.textContent = (changePct >= 0 ? '+' : '') + this.fmt(changePct) + '%';
-        chEl.className   = 'chart-change ' + (changePct >= 0 ? 'pos' : 'neg');
-      } else {
-        chEl.textContent = ''; chEl.className = 'chart-change';
-      }
-    }
-  },
-
-  renderWatchlist() {
-    const list = document.getElementById('tickerList');
-    list.innerHTML = '';
-    STATE.watchlist.forEach(sym => {
-      const pc       = STATE.priceCache[sym];
-      const priceStr = pc ? '$' + this.fmt(pc.price) : '—';
-      const chgStr   = pc ? (pc.changePct >= 0 ? '+' : '') + this.fmt(pc.changePct) + '%' : '—';
-      const chgClass = pc ? (pc.changePct >= 0 ? 'pos' : 'neg') : '';
-      const row = document.createElement('div');
-      row.className = 'ticker-row' + (sym === STATE.activeSymbol ? ' active' : '');
-      row.innerHTML = `
-        <span class="tr-sym">${sym}</span>
-        <span class="tr-price">${priceStr}</span>
-        <span class="tr-chg ${chgClass}">${chgStr}</span>
-        <button class="tr-del" data-sym="${sym}" title="Remove">✕</button>
-      `;
-      row.addEventListener('click', e => {
-        if (e.target.classList.contains('tr-del')) removeFromWatchlist(e.target.dataset.sym);
-        else { loadSymbol(sym); closeSidebar(); }
-      });
-      list.appendChild(row);
-    });
-  }
-};
-
-// ── LOAD SYMBOL ───────────────────────────────────────────────
-async function loadSymbol(symbol) {
-  if (!WORKER_URL || WORKER_URL.includes('YOUR_WORKER')) {
-    UI.toast('Worker URL not configured in app.js', true); return;
-  }
-  STATE.activeSymbol = symbol;
-  UI.renderWatchlist();
-  UI.loading(true, `Fetching ${symbol}...`);
-  try {
-    const cacheKey = `${symbol}_${STATE.activeTf}`;
-    if (!STATE.ohlcvCache[cacheKey]) {
-      STATE.ohlcvCache[cacheKey] = await API.aggs(symbol, STATE.activeTf);
-    }
-    const candles = STATE.ohlcvCache[cacheKey];
-    const ind     = Ind.compute(candles);
-    STATE.indCache[cacheKey] = ind;
-    if (!STATE.priceCache[symbol]) {
-      const pc = await API.prevClose(symbol);
-      if (pc) STATE.priceCache[symbol] = pc;
-    }
-    const pc = STATE.priceCache[symbol];
-    Charts.render(candles, ind);
-    UI.updateIndicators(ind);
-    UI.updateOHLCV(candles);
-    UI.updateChartHeader(symbol, ind.price, pc?.changePct);
-    UI.renderWatchlist();
-  } catch (err) {
-    console.error(err);
-    UI.toast(err.message, true);
-  }
-  UI.loading(false);
-}
-
-// ── WATCHLIST ─────────────────────────────────────────────────
-function addToWatchlist(sym) {
-  sym = sym.trim().toUpperCase().replace(/[^A-Z.]/g, '');
-  if (!sym || STATE.watchlist.includes(sym)) return;
-  STATE.watchlist.push(sym);
-  localStorage.setItem('tsp_watchlist', JSON.stringify(STATE.watchlist));
-  UI.renderWatchlist();
-}
-function removeFromWatchlist(sym) {
-  STATE.watchlist = STATE.watchlist.filter(s => s !== sym);
-  if (STATE.activeSymbol === sym) { STATE.activeSymbol = null; UI.updateChartHeader('Select a ticker', null, null); }
-  localStorage.setItem('tsp_watchlist', JSON.stringify(STATE.watchlist));
-  UI.renderWatchlist();
-}
-
-// ── SCREENER ──────────────────────────────────────────────────
-async function runScreenerScan() {
-  if (!WORKER_URL || WORKER_URL.includes('YOUR_WORKER')) {
-    UI.toast('Worker URL not configured in app.js', true); return;
-  }
-  const preset  = document.getElementById('scanPreset').value;
-  const btn     = document.getElementById('btnScan');
-  const textEl  = document.getElementById('scanBtnText');
-  btn.disabled  = true; btn.classList.add('loading'); textEl.style.opacity = '0';
-  const results = [];
-  for (const sym of STATE.watchlist) {
-    try {
-      const cacheKey = `${sym}_${STATE.activeTf}`;
-      if (!STATE.ohlcvCache[cacheKey]) {
-        STATE.ohlcvCache[cacheKey] = await API.aggs(sym, STATE.activeTf);
-        await new Promise(r => setTimeout(r, 250));
-      }
-      const ind = Ind.compute(STATE.ohlcvCache[cacheKey]);
-      STATE.indCache[cacheKey] = ind;
-      let match=false, label='', type='', val='';
-      switch (preset) {
-        case 'rsi_oversold':   if (ind.rsi < 30)                          { match=true; label='OVERSOLD';  type='bull'; val='RSI '+UI.fmt(ind.rsi); } break;
-        case 'rsi_overbought': if (ind.rsi > 70)                          { match=true; label='OVERBOUGHT';type='bear'; val='RSI '+UI.fmt(ind.rsi); } break;
-        case 'macd_bullish':   if (ind.macd > ind.macdSig)                { match=true; label='MACD BULL'; type='bull'; val=UI.fmt(ind.macdHist,4); } break;
-        case 'macd_bearish':   if (ind.macd < ind.macdSig)                { match=true; label='MACD BEAR'; type='bear'; val=UI.fmt(ind.macdHist,4); } break;
-        case 'above_ema20':    if (ind.price > ind.ema20)                  { match=true; label='> EMA20';   type='bull'; val='+'+((ind.price/ind.ema20-1)*100).toFixed(1)+'%'; } break;
-        case 'below_ema20':    if (ind.price < ind.ema20)                  { match=true; label='< EMA20';   type='bear'; val=((ind.price/ind.ema20-1)*100).toFixed(1)+'%'; } break;
-        case 'volume_surge':   if (ind.vol > ind.volAvg * 1.5)            { match=true; label='VOL SURGE'; type='bull'; val=(ind.vol/ind.volAvg).toFixed(1)+'× avg'; } break;
-        case 'golden_cross':   if (ind.ema20>ind.ema50 && ind.price>ind.ema200) { match=true; label='GOLDEN ✕'; type='bull'; val='EMA20>EMA50'; } break;
-      }
-      if (match) results.push({ sym, label, type, val });
-    } catch (e) { console.warn(sym, e.message); }
-  }
-  const container = document.getElementById('scanResults');
-  document.getElementById('scanCount').textContent = results.length + ' matches';
-  container.innerHTML = '';
-  if (!results.length) {
-    container.innerHTML = '<div class="sidebar-empty">No matches in watchlist.</div>';
-  } else {
-    results.forEach(r => {
-      const row = document.createElement('div');
-      row.className = 'scan-result-row';
-      row.innerHTML = `<span class="srr-sym">${r.sym}</span><span class="srr-badge ${r.type}">${r.label}</span><span class="srr-val">${r.val}</span>`;
-      row.addEventListener('click', () => loadSymbol(r.sym));
-      container.appendChild(row);
-    });
-  }
-  btn.disabled = false; btn.classList.remove('loading'); textEl.style.opacity = '1';
-}
-
-// ── GEMINI AI SUMMARY ─────────────────────────────────────────
-async function generateAISummary() {
-  if (!STATE.activeSymbol)  { UI.toast('Select a ticker first', true); return; }
-  if (!WORKER_URL || WORKER_URL.includes('YOUR_WORKER')) {
-    UI.toast('Worker URL not configured in app.js', true); return;
-  }
-  const cacheKey = `${STATE.activeSymbol}_${STATE.activeTf}`;
-  const ind = STATE.indCache[cacheKey];
-  if (!ind) { UI.toast('Load chart data first', true); return; }
-
-  const btn     = document.getElementById('btnAnalyze');
-  const content = document.getElementById('aiContent');
-  const status  = document.getElementById('aiStatus');
-  btn.disabled  = true;
-  status.textContent = 'Generating...';
-  content.innerHTML  = '<span class="ai-typing">Analysing indicators</span>';
-
-  const overall = Ind.overall(ind);
-  const tfLabel = STATE.activeTf <= 10 ? 'intraday' : STATE.activeTf <= 30 ? '1-month' : STATE.activeTf <= 90 ? '3-month' : '1-year';
-
-  const prompt = `You are a sharp technical analyst. In 3 concise sentences, give a plain English trade summary for ${STATE.activeSymbol} based on these ${tfLabel} indicators:
-
-RSI(14): ${UI.fmt(ind.rsi)} ${ind.rsi < 30 ? '(oversold)' : ind.rsi > 70 ? '(overbought)' : '(neutral range)'}
-EMA20: $${UI.fmt(ind.ema20)} | EMA50: $${UI.fmt(ind.ema50)} | EMA200: $${UI.fmt(ind.ema200)}
-Price: $${UI.fmt(ind.price)} — ${ind.price > (ind.ema200||0) ? 'ABOVE' : 'BELOW'} EMA200
-MACD: ${UI.fmt(ind.macd,4)} vs Signal ${UI.fmt(ind.macdSig,4)} — Hist ${UI.fmt(ind.macdHist,4)}
-Volume: ${UI.fmtVol(ind.vol)} vs 20-day avg ${UI.fmtVol(ind.volAvg)} = ${ind.vol&&ind.volAvg?(ind.vol/ind.volAvg).toFixed(1)+'×':'N/A'} avg
-Overall composite signal: ${overall}
-
-Be direct and specific. Mention key price levels implied by the EMAs. Note momentum direction and any divergences. End with a clear bias and key level to watch.`;
-
-  try {
-    const result = await API.gemini(prompt);
-    content.innerHTML = `<div class="ai-text">${result.text}</div>`;
-    status.textContent = 'Analysis complete';
-  } catch (e) {
-    content.innerHTML = `<div class="ai-text" style="color:var(--red)">Error: ${e.message}</div>`;
-    status.textContent = '';
-  }
-  btn.disabled = false;
-}
-
-// ── MARKET PILLS ──────────────────────────────────────────────
-async function loadMarketPills() {
-  for (const { sym, id } of [{ sym:'SPY', id:'spy-val' }, { sym:'QQQ', id:'qqq-val' }]) {
-    try {
-      const pc = await API.prevClose(sym);
-      if (pc) {
-        const el = document.getElementById(id);
-        if (el) {
-          el.textContent = '$' + UI.fmt(pc.price) + ' ' + (pc.changePct >= 0 ? '+' : '') + UI.fmt(pc.changePct) + '%';
-          el.className   = 'pill-val ' + (pc.changePct >= 0 ? 'pos' : 'neg');
-        }
-      }
-    } catch {}
-  }
-}
-
-// ── SETTINGS ─────────────────────────────────────────────────
-function openSettings()  { document.getElementById('settingsModal').classList.add('open'); }
-function closeSettings() { document.getElementById('settingsModal').classList.remove('open'); }
-function closeTooltip()  { document.getElementById('tooltipOverlay').classList.remove('open'); }
-
-// ── AUTONOMOUS SCANNER ────────────────────────────────────────
-async function runAutonomousScan() {
-  const btn      = document.getElementById('btnRunScan');
-  const textEl   = document.getElementById('runScanText');
-  const progress = document.getElementById('scannerProgress');
-  const fillEl   = document.getElementById('progressFill');
-  const labelEl  = document.getElementById('progressLabel');
-  const results  = document.getElementById('scannerResults');
-  const metaEl   = document.getElementById('scannerMeta');
-
-  btn.disabled        = true;
-  textEl.style.opacity = '0';
-  btn.classList.add('loading');
-  progress.style.display = 'block';
-  results.innerHTML   = '';
-  metaEl.textContent  = '';
-
-  // Animate progress bar during the scan (we don't get real progress back)
-  // Estimate ~2 min total, update bar every 5s
-  const totalEstimatedMs = 130000; // 2m10s
-  const startTime        = Date.now();
-  const progressInterval = setInterval(() => {
-    const elapsed = Date.now() - startTime;
-    const pct     = Math.min((elapsed / totalEstimatedMs) * 90, 90); // cap at 90% until done
-    fillEl.style.width = pct + '%';
-    const remaining = Math.max(0, Math.round((totalEstimatedMs - elapsed) / 1000));
-    const mins = Math.floor(remaining / 60);
-    const secs = remaining % 60;
-    labelEl.textContent = remaining > 0
-      ? `Scanning market... ~${mins}:${secs.toString().padStart(2,'0')} remaining`
-      : 'Finalising results...';
-  }, 1000);
-
-  try {
-    const res  = await fetch(`${WORKER_URL}/scan`);
-    const data = await res.json();
-
-    clearInterval(progressInterval);
-    fillEl.style.width = '100%';
-    labelEl.textContent = 'Scan complete';
-    setTimeout(() => { progress.style.display = 'none'; }, 1500);
-
-    if (data.error) throw new Error(data.error);
-
-    // Meta summary
-    metaEl.textContent = `${data.scanned?.toLocaleString()} stocks scanned · ${data.results?.length} setups found · ${data.scanDate}`;
-
-    // Render results
-    if (!data.results?.length) {
-      results.innerHTML = '<div class="sidebar-empty">No qualifying setups found today.</div>';
-    } else {
-      results.innerHTML = data.results.map(r => renderScanCard(r)).join('');
-      // Attach click handlers
-      results.querySelectorAll('.scan-card').forEach(card => {
-        card.addEventListener('click', () => {
-          const ticker = card.dataset.ticker;
-          if (ticker) { loadSymbol(ticker); closeSidebar(); }
-        });
-      });
-    }
-
-  } catch (e) {
-    clearInterval(progressInterval);
-    progress.style.display = 'none';
-    results.innerHTML = `<div class="sidebar-empty" style="color:var(--red)">Scan error: ${e.message}</div>`;
-  }
-
-  btn.disabled = false;
-  textEl.style.opacity = '1';
-  btn.classList.remove('loading');
-}
-
-function renderScanCard(r) {
-  const scoreClass = r.compositeScore >= 60 ? 'high' : '';
-
-  const earningsClass = r.earningsFlag === 'red'    ? 'earn-red'
-                      : r.earningsFlag === 'yellow'  ? 'earn-yellow'
-                      : r.earningsFlag === 'green'   ? 'earn-green'
-                      : 'earn-unknown';
-  const earningsLabel = r.earningsFlag === 'red'    ? '⚠ Earnings ≤2d'
-                      : r.earningsFlag === 'yellow'  ? '● Earnings 3-7d'
-                      : r.earningsFlag === 'green'   ? '✓ Clear runway'
-                      : '? Earnings';
-
-  const signals = (r.signals || [])
-    .map(s => `<span class="scan-signal-tag">${s}</span>`)
-    .join('');
-
-  const rrColor = r.rr >= 3 ? 'var(--green)' : r.rr >= 2 ? 'var(--titanium)' : 'var(--amber)';
-
-  return `
-    <div class="scan-card" data-ticker="${r.ticker}">
-      <div class="scan-card-top">
-        <div class="scan-card-left">
-          <span class="scan-rank">#${r.rank}</span>
-          <span class="scan-ticker">${r.ticker}</span>
-        </div>
-        <div style="display:flex;gap:5px;align-items:center;">
-          <span class="scan-score ${scoreClass}">${r.compositeScore}</span>
-          <span class="scan-earnings ${earningsClass}">${earningsLabel}</span>
-        </div>
-      </div>
-
-      <div class="scan-levels">
-        <div class="scan-level entry">
-          <span class="scan-level-lbl">Entry</span>
-          <span class="scan-level-val">$${r.entry}</span>
-        </div>
-        <div class="scan-level target">
-          <span class="scan-level-lbl">Target</span>
-          <span class="scan-level-val">$${r.target}</span>
-        </div>
-        <div class="scan-level stop">
-          <span class="scan-level-lbl">Stop</span>
-          <span class="scan-level-val">$${r.stopLoss}</span>
-        </div>
-      </div>
-
-      <div class="scan-rr">
-        R:R <span style="color:${rrColor}">${r.rr}:1</span>
-        <span style="color:var(--sheen);margin-left:8px;">RSI ${r.rsi} · Vol ${r.volRatio}×</span>
-      </div>
-
-      <div class="scan-signals">${signals}</div>
-    </div>
-  `;
-}
-
-// ── SIDEBAR TOGGLE (mobile) ───────────────────────────────────
-function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('open');
-  document.getElementById('sidebarOverlay').classList.toggle('visible');
-}
-function closeSidebar() {
-  document.getElementById('sidebar').classList.remove('open');
-  document.getElementById('sidebarOverlay').classList.remove('visible');
-}
-
-// ── SIDEBAR TABS ──────────────────────────────────────────────
-function switchTab(tab) {
-  document.querySelectorAll('.stab').forEach((el,i) => el.classList.toggle('active', ['watchlist','screener','scanner'][i] === tab));
-  document.querySelectorAll('.sidebar-panel').forEach(el => el.classList.remove('active'));
-  document.getElementById(`panel-${tab}`)?.classList.add('active');
-}
-
-// ── HEALTH CHECK ──────────────────────────────────────────────
-async function checkWorkerHealth() {
-  if (!CONFIG.workerUrl) { UI.workerStatus(false); return; }
-  try {
-    const h = await API.health();
-    const missingKeys = !h.polygon || !h.gemini;
-    UI.workerStatus(h.ok, missingKeys);
-    if (missingKeys) {
-      const missing = [!h.polygon && 'POLYGON_KEY', !h.gemini && 'GEMINI_KEY'].filter(Boolean).join(', ');
-      UI.toast(`Worker connected but missing: ${missing}`, true);
-    }
-  } catch {
-    UI.workerStatus(false);
-  }
-}
-
-// ── INIT ──────────────────────────────────────────────────────
-function init() {
-  Charts.init();
-  UI.renderWatchlist();
-  UI.workerStatus(false);
-
-  const addInput = document.getElementById('addTickerInput');
-  document.getElementById('btnAddTicker').addEventListener('click', () => { addToWatchlist(addInput.value); addInput.value = ''; });
-  addInput.addEventListener('keydown', e => { if (e.key === 'Enter') { addToWatchlist(addInput.value); addInput.value = ''; } });
-
-  document.querySelectorAll('.tf-btn').forEach(btn => btn.addEventListener('click', () => {
-    document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    STATE.activeTf = parseInt(btn.dataset.tf);
-    if (STATE.activeSymbol) loadSymbol(STATE.activeSymbol);
-  }));
-
-  document.querySelectorAll('.ov-btn').forEach(btn => btn.addEventListener('click', () => {
-    const ov = btn.dataset.ov;
-    STATE.overlays[ov] = !STATE.overlays[ov];
-    btn.classList.toggle('active', STATE.overlays[ov]);
-    const ck = STATE.activeSymbol + '_' + STATE.activeTf;
-    if (STATE.ohlcvCache[ck] && STATE.indCache[ck]) Charts.render(STATE.ohlcvCache[ck], STATE.indCache[ck]);
-  }));
-
-  checkWorkerHealth().then(() => {
-    if (STATE.watchlist.length) loadSymbol(STATE.watchlist[0]);
-    loadMarketPills();
-  });
-}
-
-document.addEventListener('DOMContentLoaded', init);
+      borderUpColor: '#4caf7d
