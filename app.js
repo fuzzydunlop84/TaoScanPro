@@ -549,6 +549,134 @@ function openSettings()  { document.getElementById('settingsModal').classList.ad
 function closeSettings() { document.getElementById('settingsModal').classList.remove('open'); }
 function closeTooltip()  { document.getElementById('tooltipOverlay').classList.remove('open'); }
 
+// ── AUTONOMOUS SCANNER ────────────────────────────────────────
+async function runAutonomousScan() {
+  const btn      = document.getElementById('btnRunScan');
+  const textEl   = document.getElementById('runScanText');
+  const progress = document.getElementById('scannerProgress');
+  const fillEl   = document.getElementById('progressFill');
+  const labelEl  = document.getElementById('progressLabel');
+  const results  = document.getElementById('scannerResults');
+  const metaEl   = document.getElementById('scannerMeta');
+
+  btn.disabled        = true;
+  textEl.style.opacity = '0';
+  btn.classList.add('loading');
+  progress.style.display = 'block';
+  results.innerHTML   = '';
+  metaEl.textContent  = '';
+
+  // Animate progress bar during the scan (we don't get real progress back)
+  // Estimate ~2 min total, update bar every 5s
+  const totalEstimatedMs = 130000; // 2m10s
+  const startTime        = Date.now();
+  const progressInterval = setInterval(() => {
+    const elapsed = Date.now() - startTime;
+    const pct     = Math.min((elapsed / totalEstimatedMs) * 90, 90); // cap at 90% until done
+    fillEl.style.width = pct + '%';
+    const remaining = Math.max(0, Math.round((totalEstimatedMs - elapsed) / 1000));
+    const mins = Math.floor(remaining / 60);
+    const secs = remaining % 60;
+    labelEl.textContent = remaining > 0
+      ? `Scanning market... ~${mins}:${secs.toString().padStart(2,'0')} remaining`
+      : 'Finalising results...';
+  }, 1000);
+
+  try {
+    const res  = await fetch(`${WORKER_URL}/scan`);
+    const data = await res.json();
+
+    clearInterval(progressInterval);
+    fillEl.style.width = '100%';
+    labelEl.textContent = 'Scan complete';
+    setTimeout(() => { progress.style.display = 'none'; }, 1500);
+
+    if (data.error) throw new Error(data.error);
+
+    // Meta summary
+    metaEl.textContent = `${data.scanned?.toLocaleString()} stocks scanned · ${data.results?.length} setups found · ${data.scanDate}`;
+
+    // Render results
+    if (!data.results?.length) {
+      results.innerHTML = '<div class="sidebar-empty">No qualifying setups found today.</div>';
+    } else {
+      results.innerHTML = data.results.map(r => renderScanCard(r)).join('');
+      // Attach click handlers
+      results.querySelectorAll('.scan-card').forEach(card => {
+        card.addEventListener('click', () => {
+          const ticker = card.dataset.ticker;
+          if (ticker) { loadSymbol(ticker); closeSidebar(); }
+        });
+      });
+    }
+
+  } catch (e) {
+    clearInterval(progressInterval);
+    progress.style.display = 'none';
+    results.innerHTML = `<div class="sidebar-empty" style="color:var(--red)">Scan error: ${e.message}</div>`;
+  }
+
+  btn.disabled = false;
+  textEl.style.opacity = '1';
+  btn.classList.remove('loading');
+}
+
+function renderScanCard(r) {
+  const scoreClass = r.compositeScore >= 60 ? 'high' : '';
+
+  const earningsClass = r.earningsFlag === 'red'    ? 'earn-red'
+                      : r.earningsFlag === 'yellow'  ? 'earn-yellow'
+                      : r.earningsFlag === 'green'   ? 'earn-green'
+                      : 'earn-unknown';
+  const earningsLabel = r.earningsFlag === 'red'    ? '⚠ Earnings ≤2d'
+                      : r.earningsFlag === 'yellow'  ? '● Earnings 3-7d'
+                      : r.earningsFlag === 'green'   ? '✓ Clear runway'
+                      : '? Earnings';
+
+  const signals = (r.signals || [])
+    .map(s => `<span class="scan-signal-tag">${s}</span>`)
+    .join('');
+
+  const rrColor = r.rr >= 3 ? 'var(--green)' : r.rr >= 2 ? 'var(--titanium)' : 'var(--amber)';
+
+  return `
+    <div class="scan-card" data-ticker="${r.ticker}">
+      <div class="scan-card-top">
+        <div class="scan-card-left">
+          <span class="scan-rank">#${r.rank}</span>
+          <span class="scan-ticker">${r.ticker}</span>
+        </div>
+        <div style="display:flex;gap:5px;align-items:center;">
+          <span class="scan-score ${scoreClass}">${r.compositeScore}</span>
+          <span class="scan-earnings ${earningsClass}">${earningsLabel}</span>
+        </div>
+      </div>
+
+      <div class="scan-levels">
+        <div class="scan-level entry">
+          <span class="scan-level-lbl">Entry</span>
+          <span class="scan-level-val">$${r.entry}</span>
+        </div>
+        <div class="scan-level target">
+          <span class="scan-level-lbl">Target</span>
+          <span class="scan-level-val">$${r.target}</span>
+        </div>
+        <div class="scan-level stop">
+          <span class="scan-level-lbl">Stop</span>
+          <span class="scan-level-val">$${r.stopLoss}</span>
+        </div>
+      </div>
+
+      <div class="scan-rr">
+        R:R <span style="color:${rrColor}">${r.rr}:1</span>
+        <span style="color:var(--sheen);margin-left:8px;">RSI ${r.rsi} · Vol ${r.volRatio}×</span>
+      </div>
+
+      <div class="scan-signals">${signals}</div>
+    </div>
+  `;
+}
+
 // ── SIDEBAR TOGGLE (mobile) ───────────────────────────────────
 function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('open');
@@ -561,7 +689,7 @@ function closeSidebar() {
 
 // ── SIDEBAR TABS ──────────────────────────────────────────────
 function switchTab(tab) {
-  document.querySelectorAll('.stab').forEach((el,i) => el.classList.toggle('active', ['watchlist','screener'][i] === tab));
+  document.querySelectorAll('.stab').forEach((el,i) => el.classList.toggle('active', ['watchlist','screener','scanner'][i] === tab));
   document.querySelectorAll('.sidebar-panel').forEach(el => el.classList.remove('active'));
   document.getElementById(`panel-${tab}`)?.classList.add('active');
 }
