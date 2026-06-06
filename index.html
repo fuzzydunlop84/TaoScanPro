@@ -47,6 +47,7 @@
     <div class="sidebar-tabs">
       <div class="stab active" onclick="switchTab('watchlist')">Watchlist</div>
       <div class="stab" onclick="switchTab('screener')">Screener</div>
+      <div class="stab" onclick="switchTab('scanner')">Scanner</div>
     </div>
 
     <!-- WATCHLIST TAB -->
@@ -86,6 +87,24 @@
         <div class="sidebar-empty">Select a preset and click SCAN.<br>Scans your watchlist.</div>
       </div>
     </div>
+    <!-- SCANNER TAB -->
+    <div class="sidebar-panel" id="panel-scanner">
+      <div class="scanner-intro">
+        <p class="scanner-desc">Autonomous scan of the full US market. Finds stocks with volume surges, momentum hooks, EMA support, and volatility squeezes.</p>
+        <div class="scanner-meta" id="scannerMeta"></div>
+        <button class="scan-btn" id="btnRunScan" onclick="runAutonomousScan()">
+          <span id="runScanText">▶ RUN SCAN</span>
+        </button>
+      </div>
+      <div class="scanner-progress" id="scannerProgress" style="display:none">
+        <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill"></div></div>
+        <div class="progress-label" id="progressLabel">Initialising...</div>
+      </div>
+      <div class="sidebar-list" id="scannerResults">
+        <div class="sidebar-empty">Run a scan to find the top 10 setups across the full US market.</div>
+      </div>
+    </div>
+
   </aside>
 
   <!-- ── MAIN ── -->
