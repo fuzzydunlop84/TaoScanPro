@@ -1131,6 +1131,180 @@ main::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 2px; }
 /* Hidden on desktop, shown on mobile */
 .btn-menu { display: none; }
 
+/* ── SCANNER TAB ─────────────────────────────────── */
+.scanner-intro {
+  padding: 12px;
+  border-bottom: 1px solid var(--edge);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.scanner-desc {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--sheen);
+  line-height: 1.7;
+}
+
+.scanner-meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--titanium);
+  min-height: 14px;
+}
+
+.scanner-progress {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--edge);
+  flex-shrink: 0;
+}
+
+.progress-bar-bg {
+  height: 4px;
+  background: var(--chrome-4);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--steel), var(--silver));
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+.progress-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--sheen);
+  animation: livepulse 1.5s infinite;
+}
+
+/* SCANNER RESULT CARDS */
+.scan-card {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.scan-card:hover { background: rgba(255,255,255,0.04); }
+
+.scan-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.scan-card-left { display: flex; align-items: center; gap: 8px; }
+
+.scan-rank {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--sheen);
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.scan-ticker {
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--white);
+  letter-spacing: 0.05em;
+}
+
+.scan-score {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: rgba(122,143,166,0.12);
+  border: 1px solid var(--edge);
+  color: var(--steel);
+}
+
+.scan-score.high {
+  background: rgba(76,175,125,0.12);
+  border-color: var(--green-dim);
+  color: var(--green);
+}
+
+.scan-earnings {
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 700;
+}
+.earn-green  { background: rgba(76,175,125,0.12);  color: var(--green); border: 1px solid var(--green-dim); }
+.earn-yellow { background: rgba(200,136,42,0.12);   color: var(--amber); border: 1px solid rgba(200,136,42,0.4); }
+.earn-red    { background: rgba(201,64,64,0.12);    color: var(--red);   border: 1px solid var(--red-dim); }
+.earn-unknown{ background: rgba(74,80,96,0.12);     color: var(--sheen); border: 1px solid var(--edge); }
+
+.scan-levels {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 5px;
+}
+
+.scan-level {
+  background: var(--bg);
+  border: 1px solid var(--chrome-4);
+  border-radius: 3px;
+  padding: 4px 6px;
+  text-align: center;
+}
+
+.scan-level-lbl {
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--sheen);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: block;
+  margin-bottom: 1px;
+}
+
+.scan-level-val {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.scan-level.entry .scan-level-val  { color: var(--bright); }
+.scan-level.target .scan-level-val { color: var(--green); }
+.scan-level.stop .scan-level-val   { color: var(--red); }
+
+.scan-rr {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--sheen);
+  margin-bottom: 5px;
+}
+.scan-rr span { color: var(--green); font-weight: 700; }
+
+.scan-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.scan-signal-tag {
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: rgba(122,143,166,0.08);
+  border: 1px solid var(--chrome-4);
+  color: var(--sheen);
+}
+
 /* ── SKELETON ────────────────────────────────────── */
 .skel-line {
   height: 10px; border-radius: 3px; margin-bottom: 8px;
