@@ -10,16 +10,15 @@
 </head>
 <body>
 
-<!-- TOOLTIP -->
-<div class="tooltip-overlay" id="tooltipOverlay" onclick="closeTooltip()">
+<!-- SCORE TOOLTIP -->
+<div class="tooltip-overlay" id="scoreTooltip" onclick="closeScoreTooltip()">
   <div class="tooltip-box" onclick="event.stopPropagation()">
-    <div class="tooltip-title" id="tooltipTitle"></div>
-    <div class="tooltip-text" id="tooltipText"></div>
-    <button class="tooltip-close" onclick="closeTooltip()">Got it</button>
+    <div class="tooltip-title" id="scoreTooltipTitle"></div>
+    <div class="tooltip-text" id="scoreTooltipText"></div>
+    <button class="tooltip-close" onclick="closeScoreTooltip()">Got it</button>
   </div>
 </div>
 
-<!-- APP -->
 <div class="app-wrap">
 
   <!-- HEADER -->
@@ -48,69 +47,38 @@
 
   <main>
 
-    <!-- ══ SCANNER PANEL ══ -->
+    <!-- STALE / FAILURE WARNING -->
+    <div class="data-warning" id="dataWarning" style="display:none">
+      <span class="dw-icon" id="dataWarningIcon">⚠</span>
+      <span class="dw-text" id="dataWarningText"></span>
+    </div>
+
+    <!-- ══ SCANNER ══ -->
     <section class="scanner-section">
 
       <div class="scanner-topbar">
         <div class="scanner-title-group">
-          <span class="scanner-title">Autonomous Scanner</span>
-          <span class="scanner-subtitle">Full US market · Volume surge · Momentum hook · EMA support · Volatility squeeze</span>
+          <span class="scanner-title">Today's Setups</span>
+          <span class="scanner-subtitle" id="scannerLastRun">Scanning full US market nightly · Volume surge · Momentum hook · EMA support · Volatility squeeze</span>
         </div>
-        <button class="run-scan-btn" id="btnRunScan" onclick="runAutonomousScan()">
-          <span class="run-scan-icon" id="runScanIcon">▶</span>
-          <span id="runScanText">RUN SCAN</span>
-        </button>
       </div>
 
-      <!-- PROGRESS -->
-      <div class="scan-progress-row" id="scanProgressRow" style="display:none">
-        <div class="progress-bar-bg">
-          <div class="progress-bar-fill" id="progressFill"></div>
-        </div>
-        <span class="progress-label" id="progressLabel">Initialising scan...</span>
-      </div>
-
-      <!-- FUNNEL STATS -->
-      <div class="funnel-stats" id="funnelStats" style="display:none">
-        <div class="funnel-item">
-          <span class="funnel-val" id="f-scanned">—</span>
-          <span class="funnel-lbl">Stocks scanned</span>
-        </div>
-        <span class="funnel-sep">→</span>
-        <div class="funnel-item">
-          <span class="funnel-val" id="f-filtered">—</span>
-          <span class="funnel-lbl">Passed filters</span>
-        </div>
-        <span class="funnel-sep">→</span>
-        <div class="funnel-item">
-          <span class="funnel-val" id="f-phase2">—</span>
-          <span class="funnel-lbl">Deep analysed</span>
-        </div>
-        <span class="funnel-sep">→</span>
-        <div class="funnel-item">
-          <span class="funnel-val" id="f-results">—</span>
-          <span class="funnel-lbl">Top setups</span>
-        </div>
-        <div class="funnel-date" id="funnelDate"></div>
-      </div>
-
-      <!-- RESULTS GRID -->
       <div class="scan-results-grid" id="scanResultsGrid">
         <div class="scan-empty">
           <div class="scan-empty-icon">道</div>
-          <div class="scan-empty-title">Ready to scan</div>
-          <div class="scan-empty-sub">Click RUN SCAN to analyse the full US market and find the top 10 setups.</div>
+          <div class="scan-empty-title">Loading recommendations...</div>
+          <div class="scan-empty-sub">Fetching today's setups from overnight scan.</div>
         </div>
       </div>
 
     </section>
 
     <!-- ══ CHART + ANALYSIS ══ -->
-    <section class="chart-section" id="chartSection">
+    <section class="chart-section">
 
       <div class="chart-topbar">
         <div class="chart-symbol-group">
-          <span class="chart-symbol" id="chartSymbol">Select a result above</span>
+          <span class="chart-symbol" id="chartSymbol">Tap a result above</span>
           <span class="chart-price" id="chartPrice"></span>
           <span class="chart-change" id="chartChange"></span>
         </div>
@@ -132,7 +100,6 @@
 
       <div class="chart-and-analysis">
 
-        <!-- CHARTS -->
         <div class="charts-col">
           <div class="candle-chart-wrap" id="mainChart"></div>
           <div class="sub-charts-row">
@@ -153,10 +120,8 @@
           </div>
         </div>
 
-        <!-- INDICATORS + AI -->
         <div class="analysis-col">
 
-          <!-- INDICATORS -->
           <div class="indicators-panel">
             <div class="panel-hd">
               <span class="panel-hd-title">Indicators</span>
@@ -222,7 +187,6 @@
             </div>
           </div>
 
-          <!-- AI PANEL -->
           <div class="ai-panel">
             <div class="panel-hd">
               <span class="panel-hd-title">AI Analysis</span>
@@ -233,12 +197,12 @@
               <div class="ai-status-text" id="aiStatus"></div>
             </div>
             <div class="ai-output" id="aiContent">
-              <div class="ai-placeholder">Tap a scan result to load its chart, then click Generate Summary.</div>
+              <div class="ai-placeholder">Tap a result above to load its chart, then click Generate Summary.</div>
             </div>
           </div>
 
-        </div><!-- /analysis-col -->
-      </div><!-- /chart-and-analysis -->
+        </div>
+      </div>
     </section>
 
     <div class="page-footer">
@@ -250,7 +214,6 @@
   </main>
 </div>
 
-<!-- LOADING -->
 <div class="loading-overlay" id="loadingOverlay" style="display:none">
   <div class="loading-box">
     <div class="loading-spinner"></div>
