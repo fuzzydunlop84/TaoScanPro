@@ -1,11 +1,34 @@
 'use strict';
 /* ============================================================
-   TAOSCAN PRO — app.js
-   Scanner-central UI. No watchlist or screener.
-   All data through Cloudflare Worker.
+   TAOSCAN PRO — app.js  ·  Final clean version
+   Auto-loads KV results on startup. No scan button.
    ============================================================ */
 
 const WORKER_URL = 'https://taoscanpro.waddellb.workers.dev';
+
+// ── SCORE TOOLTIP CONTENT ─────────────────────────────────────
+const SCORE_TOOLTIPS = {
+  M: {
+    title: 'Momentum & Trigger (25%)',
+    text: 'RSI is between 30 and 55 AND turned up from yesterday — a momentum hook.\n\nMACD histogram is either positive, or its negative bars have been shrinking for 2 consecutive days — selling exhaustion.\n\nHigher score = stronger hook off a lower RSI base with MACD confirming.'
+  },
+  T: {
+    title: 'Trend & Support (25%)',
+    text: 'Price is within 0.5%–2% above an upward-sloping 50-day EMA.\n\nThis identifies the high-probability zone where institutions tend to defend price — close enough to the EMA to be a dip buy, but above it confirming the trend is intact.\n\nHigher score = tighter to the EMA support level.'
+  },
+  V: {
+    title: 'Volume Conviction (20%)',
+    text: 'Current day volume versus the 20-day average volume.\n\nA reading of 1.5× or above means significantly more shares changed hands than usual — a sign that institutional money is participating, not just retail noise.\n\nHigher score = stronger volume surge above the average.'
+  },
+  S: {
+    title: 'Volatility Squeeze (15%)',
+    text: 'Bollinger Bandwidth measures how compressed price action has been.\n\nA squeeze occurs when bandwidth is in the bottom 25% of its own 20-day range — like a coiled spring before a move.\n\nHigher score = tighter consolidation, more energy stored for a potential breakout.'
+  },
+  Q: {
+    title: 'Trend Quality (15%)',
+    text: 'Three quality checks:\n\n1. Is the 50-day EMA itself sloping upward? (Filters dead cat bounces)\n2. Is price in the lower third of its 20-day range but closing strongly? (Accumulation signal)\n3. Did the stock move less than 3% today? (Avoids chasing gap-ups)\n\nHigher score = cleaner trend with no chase risk.'
+  }
+};
 
 // ── STATE ─────────────────────────────────────────────────────
 const STATE = {
@@ -14,7 +37,8 @@ const STATE = {
   overlays:     { ema20: true, ema50: true, ema200: true },
   ohlcvCache:   {},
   indCache:     {},
-  lastScan:     JSON.parse(localStorage.getItem('tsp_lastScan') || 'null')
+  lastScan:     JSON.parse(localStorage.getItem('tsp_lastScan') || 'null'),
+  isMobile:     window.innerWidth <= 900
 };
 
 // ── INDICATOR MATH ────────────────────────────────────────────
@@ -24,13 +48,8 @@ const Ind = {
     const out = new Array(arr.length).fill(null);
     let sum = 0, cnt = 0;
     for (let i = 0; i < arr.length; i++) {
-      if (arr[i] == null) continue;
-      if (cnt < period) {
-        sum += arr[i]; cnt++;
-        if (cnt === period) out[i] = sum / period;
-      } else {
-        out[i] = arr[i] * k + out[i-1] * (1 - k);
-      }
+      if (cnt < period) { sum += arr[i]; cnt++; if (cnt === period) out[i] = sum / period; }
+      else out[i] = arr[i] * k + out[i-1] * (1 - k);
     }
     return out;
   },
@@ -38,16 +57,13 @@ const Ind = {
   rsi(closes, period = 14) {
     const out = new Array(closes.length).fill(null);
     let ag = 0, al = 0;
-    for (let i = 1; i <= period; i++) {
-      const d = closes[i] - closes[i-1];
-      if (d > 0) ag += d; else al -= d;
-    }
+    for (let i = 1; i <= period; i++) { const d = closes[i]-closes[i-1]; if(d>0) ag+=d; else al-=d; }
     ag /= period; al /= period;
     out[period] = 100 - 100 / (1 + ag / (al || 1e-10));
-    for (let i = period + 1; i < closes.length; i++) {
-      const d = closes[i] - closes[i-1];
-      ag = (ag * (period-1) + Math.max(d, 0)) / period;
-      al = (al * (period-1) + Math.max(-d, 0)) / period;
+    for (let i = period+1; i < closes.length; i++) {
+      const d = closes[i]-closes[i-1];
+      ag = (ag*(period-1) + Math.max(d,0)) / period;
+      al = (al*(period-1) + Math.max(-d,0)) / period;
       out[i] = 100 - 100 / (1 + ag / (al || 1e-10));
     }
     return out;
@@ -56,9 +72,9 @@ const Ind = {
   macd(closes, fast=12, slow=26, sig=9) {
     const ef = this.ema(closes, fast);
     const es = this.ema(closes, slow);
-    const ml = ef.map((v,i) => (v != null && es[i] != null) ? v - es[i] : null);
-    const sl = this.ema(ml.map(v => v ?? 0), sig);
-    const hs = ml.map((v,i) => (v != null && sl[i] != null) ? v - sl[i] : null);
+    const ml = ef.map((v,i) => (v!=null && es[i]!=null) ? v-es[i] : null);
+    const sl = this.ema(ml.map(v => v??0), sig);
+    const hs = ml.map((v,i) => (v!=null && sl[i]!=null) ? v-sl[i] : null);
     return { ml, sl, hs };
   },
 
@@ -111,7 +127,7 @@ const API = {
     url.searchParams.set('path', path);
     Object.entries(params).forEach(([k,v]) => url.searchParams.set(k, v));
     const res = await fetch(url.toString());
-    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `Error ${res.status}`); }
+    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || `Error ${res.status}`); }
     return res.json();
   },
 
@@ -121,12 +137,17 @@ const API = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt })
     });
-    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `Error ${res.status}`); }
+    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || `Error ${res.status}`); }
     return res.json();
   },
 
   async health() {
     const res = await fetch(WORKER_URL + '/health');
+    return res.json();
+  },
+
+  async scanResults() {
+    const res = await fetch(WORKER_URL + '/scan');
     return res.json();
   },
 
@@ -137,9 +158,12 @@ const API = {
     const from     = start.toISOString().slice(0,10);
     const to       = end.toISOString().slice(0,10);
     const timespan = days <= 10 ? 'hour' : 'day';
-    const json = await this.polygon(`/v2/aggs/ticker/${symbol}/range/1/${timespan}/${from}/${to}`, { adjusted: 'true', sort: 'asc', limit: '5000' });
+    const json = await this.polygon(
+      `/v2/aggs/ticker/${symbol}/range/1/${timespan}/${from}/${to}`,
+      { adjusted: 'true', sort: 'asc', limit: '5000' }
+    );
     if (!json.results?.length) throw new Error(`No data for ${symbol}`);
-    return json.results.map(c => ({ time: Math.floor(c.t / 1000), open: c.o, high: c.h, low: c.l, close: c.c, volume: c.v }));
+    return json.results.map(c => ({ time: Math.floor(c.t/1000), open: c.o, high: c.h, low: c.l, close: c.c, volume: c.v }));
   },
 
   async prevClose(symbol) {
@@ -173,24 +197,24 @@ const Charts = {
     this.macd = LightweightCharts.createChart(g('macdChart'),  { ...this.OPTS, width: g('macdChart').offsetWidth,  height: g('macdChart').offsetHeight  });
 
     this.mainSeries = this.main.addCandlestickSeries({ upColor:'#4caf7d', downColor:'#c94040', borderUpColor:'#4caf7d', borderDownColor:'#c94040', wickUpColor:'#4caf7d', wickDownColor:'#c94040' });
-    this.ema20S  = this.main.addLineSeries({ color: 'rgba(74,127,168,0.9)',  lineWidth: 1, title: 'EMA20'  });
-    this.ema50S  = this.main.addLineSeries({ color: 'rgba(200,136,42,0.8)',  lineWidth: 1, title: 'EMA50'  });
-    this.ema200S = this.main.addLineSeries({ color: 'rgba(201,64,64,0.7)',   lineWidth: 1, title: 'EMA200' });
-    this.rsiS       = this.rsi.addLineSeries({ color: '#7a8fa6', lineWidth: 1.5 });
-    this.macdLineS  = this.macd.addLineSeries({ color: '#4a7fa8', lineWidth: 1.5 });
-    this.macdSigS   = this.macd.addLineSeries({ color: '#c8882a', lineWidth: 1.5 });
-    this.macdHistS  = this.macd.addHistogramSeries({ priceFormat: { type: 'price', precision: 4 } });
+    this.ema20S  = this.main.addLineSeries({ color:'rgba(74,127,168,0.9)',  lineWidth:1, title:'EMA20'  });
+    this.ema50S  = this.main.addLineSeries({ color:'rgba(200,136,42,0.8)',  lineWidth:1, title:'EMA50'  });
+    this.ema200S = this.main.addLineSeries({ color:'rgba(201,64,64,0.7)',   lineWidth:1, title:'EMA200' });
+    this.rsiS      = this.rsi.addLineSeries({ color:'#7a8fa6', lineWidth:1.5 });
+    this.macdLineS = this.macd.addLineSeries({ color:'#4a7fa8', lineWidth:1.5 });
+    this.macdSigS  = this.macd.addLineSeries({ color:'#c8882a', lineWidth:1.5 });
+    this.macdHistS = this.macd.addHistogramSeries({ priceFormat: { type:'price', precision:4 } });
 
     const ro = new ResizeObserver(() => {
       if (this.main) this.main.resize(g('mainChart').offsetWidth, g('mainChart').offsetHeight);
-      if (this.rsi)  this.rsi.resize(g('rsiChart').offsetWidth,  g('rsiChart').offsetHeight);
-      if (this.macd) this.macd.resize(g('macdChart').offsetWidth, g('macdChart').offsetHeight);
+      if (this.rsi)  this.rsi.resize(g('rsiChart').offsetWidth,   g('rsiChart').offsetHeight);
+      if (this.macd) this.macd.resize(g('macdChart').offsetWidth,  g('macdChart').offsetHeight);
     });
     ['mainChart','rsiChart','macdChart'].forEach(id => ro.observe(g(id)));
   },
 
   toSeries(arr, candles, fn) {
-    return arr.map((v,i) => (v != null && candles[i]) ? { time: candles[i].time, ...fn(v) } : null).filter(Boolean);
+    return arr.map((v,i) => (v!=null && candles[i]) ? { time:candles[i].time, ...fn(v) } : null).filter(Boolean);
   },
 
   render(candles, ind) {
@@ -203,7 +227,9 @@ const Charts = {
     this.rsiS.setData(this.toSeries(ind.rsiArr, candles, tv));
     this.macdLineS.setData(this.toSeries(ind.macdArr,    candles, tv));
     this.macdSigS.setData(this.toSeries(ind.macdSigArr,  candles, tv));
-    this.macdHistS.setData(this.toSeries(ind.macdHistArr, candles, v => ({ value: v, color: v >= 0 ? 'rgba(76,175,125,0.65)' : 'rgba(201,64,64,0.65)' })));
+    this.macdHistS.setData(this.toSeries(ind.macdHistArr, candles, v => ({
+      value: v, color: v >= 0 ? 'rgba(76,175,125,0.65)' : 'rgba(201,64,64,0.65)'
+    })));
     this.main.timeScale().fitContent();
   }
 };
@@ -231,7 +257,7 @@ const UI = {
     el.style.borderColor = isErr ? 'var(--red-dim)' : 'var(--sheen)';
     el.style.color = isErr ? 'var(--red)' : 'var(--silver)';
     el.classList.add('show');
-    setTimeout(() => el.classList.remove('show'), 3000);
+    setTimeout(() => el.classList.remove('show'), 3500);
   },
   loading(show, msg) {
     document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
@@ -245,6 +271,39 @@ const UI = {
     else                     { dot.className = 'api-dot err'; lbl.textContent = 'Worker error'; }
   },
 
+  showDataWarning(type, text) {
+    const el   = document.getElementById('dataWarning');
+    const icon = document.getElementById('dataWarningIcon');
+    const txt  = document.getElementById('dataWarningText');
+    el.className  = 'data-warning ' + type;
+    icon.textContent = type === 'failed' ? '✕' : '⚠';
+    txt.textContent  = text;
+    el.style.display = 'flex';
+  },
+
+  hideDataWarning() {
+    document.getElementById('dataWarning').style.display = 'none';
+  },
+
+  updateScannerMeta(data) {
+    const el = document.getElementById('scannerLastRun');
+    if (!el || !data?.scanDate) return;
+    const scanDate    = new Date(data.scanDate + 'T12:00:00Z');
+    const completedAt = data.completedAt ? new Date(data.completedAt) : null;
+    const dateStr     = scanDate.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+    const timeStr     = completedAt ? completedAt.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) + ' UTC' : '';
+    el.textContent = `Last scan: ${dateStr}${timeStr ? ' · ' + timeStr : ''} · ${data.scanned?.toLocaleString() || '—'} stocks screened · ${data.phase2 || '—'} deep analysed`;
+  },
+
+  isStale(scanDate) {
+    if (!scanDate) return false;
+    const scan    = new Date(scanDate + 'T12:00:00Z');
+    const now     = new Date();
+    const diffMs  = now - scan;
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    return diffDays > 1.5; // stale if more than 1.5 calendar days old
+  },
+
   updateIndicators(ind) {
     const { price, rsi, ema20, ema50, ema200, macd, macdSig, macdHist, vol, volAvg } = ind;
     this.set('ib-rsi', this.fmt(rsi));
@@ -252,20 +311,20 @@ const UI = {
       document.getElementById('rsiFill').style.width = Math.min(100, rsi) + '%';
       this.setSig('ib-rsi-sig', rsi < 30 ? 'Oversold' : rsi > 70 ? 'Overbought' : 'Neutral', rsi < 30 ? 'bull' : rsi > 70 ? 'bear' : 'neutral');
     }
-    const ab = (p, e, id, sigId) => {
+    const ab = (p, e, id, sid) => {
       this.set(id, '$' + this.fmt(e));
-      this.setSig(sigId, p && e ? (p > e ? 'Price above' : 'Price below') : '—', p && e ? (p > e ? 'bull' : 'bear') : '');
+      this.setSig(sid, p && e ? (p > e ? 'Price above' : 'Price below') : '—', p && e ? (p > e ? 'bull' : 'bear') : '');
     };
     ab(price, ema20,  'ib-ema20',  'ib-ema20-sig');
     ab(price, ema50,  'ib-ema50',  'ib-ema50-sig');
     ab(price, ema200, 'ib-ema200', 'ib-ema200-sig');
     this.set('ib-macd', this.fmt(macd, 4));
-    this.setSig('ib-macd-sig', macd != null && macdSig != null ? (macd > macdSig ? 'Above signal' : 'Below signal') : '—', macd != null && macdSig != null ? (macd > macdSig ? 'bull' : 'bear') : '');
+    this.setSig('ib-macd-sig', macd!=null&&macdSig!=null ? (macd>macdSig ? 'Above signal' : 'Below signal') : '—', macd!=null&&macdSig!=null ? (macd>macdSig ? 'bull' : 'bear') : '');
     this.set('ib-macdh', this.fmt(macdHist, 4));
-    this.setSig('ib-macdh-sig', macdHist != null ? (macdHist > 0 ? 'Positive' : 'Negative') : '—', macdHist != null ? (macdHist > 0 ? 'bull' : 'bear') : '');
+    this.setSig('ib-macdh-sig', macdHist!=null ? (macdHist>0 ? 'Positive' : 'Negative') : '—', macdHist!=null ? (macdHist>0 ? 'bull' : 'bear') : '');
     this.set('ib-vol', this.fmtVol(vol));
     const ratio = vol && volAvg ? vol / volAvg : null;
-    this.set('ib-volavg', ratio ? ratio.toFixed(2) + '×' : '—');
+    this.set('ib-volavg', ratio ? ratio.toFixed(2)+'×' : '—');
     if (ratio) this.setSig('ib-volavg-sig', ratio > 1.5 ? 'Volume surge' : ratio > 1 ? 'Above avg' : 'Below avg', ratio > 1.5 ? 'bull' : 'neutral');
     const ov = Ind.overall(ind);
     const ovEl = document.getElementById('overallSignal');
@@ -282,7 +341,7 @@ const UI = {
     this.set('ohlc-l', '$' + this.fmt(c.low));
     this.set('ohlc-c', '$' + this.fmt(c.close));
     this.set('ohlc-v', this.fmtVol(c.volume));
-    this.set('ohlc-d', new Date(c.time * 1000).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }));
+    this.set('ohlc-d', new Date(c.time*1000).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }));
   },
 
   updateChartHeader(sym, price, changePct) {
@@ -293,22 +352,27 @@ const UI = {
     if (chEl) {
       if (changePct != null) {
         chEl.textContent = (changePct >= 0 ? '+' : '') + this.fmt(changePct) + '%';
-        chEl.className = 'chart-change ' + (changePct >= 0 ? 'pos' : 'neg');
+        chEl.className   = 'chart-change ' + (changePct >= 0 ? 'pos' : 'neg');
       } else { chEl.textContent = ''; chEl.className = 'chart-change'; }
     }
   }
 };
 
-// ── LOAD SYMBOL (for chart) ───────────────────────────────────
+// ── LOAD SYMBOL (chart) ───────────────────────────────────────
 async function loadSymbol(symbol) {
   STATE.activeSymbol = symbol;
-  UI.loading(true, `Loading ${symbol}...`);
 
   // Highlight active card
-  document.querySelectorAll('.scan-card').forEach(c => c.classList.toggle('active', c.dataset.ticker === symbol));
+  document.querySelectorAll('.scan-card').forEach(c =>
+    c.classList.toggle('active', c.dataset.ticker === symbol)
+  );
 
-  // Scroll to chart
-  document.getElementById('chartSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Only auto-scroll on desktop
+  if (!STATE.isMobile) {
+    document.getElementById('chartSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  UI.loading(true, `Loading ${symbol}...`);
 
   try {
     const cacheKey = `${symbol}_${STATE.activeTf}`;
@@ -329,84 +393,83 @@ async function loadSymbol(symbol) {
     console.error(err);
     UI.toast(err.message, true);
   }
+
   UI.loading(false);
 }
 
-// ── AUTONOMOUS SCANNER ────────────────────────────────────────
-async function runAutonomousScan() {
-  const btn      = document.getElementById('btnRunScan');
-  const textEl   = document.getElementById('runScanText');
-  const iconEl   = document.getElementById('runScanIcon');
-  const progress = document.getElementById('scanProgressRow');
-  const fillEl   = document.getElementById('progressFill');
-  const labelEl  = document.getElementById('progressLabel');
-  const grid     = document.getElementById('scanResultsGrid');
-  const stats    = document.getElementById('funnelStats');
-
-  btn.disabled = true;
-  btn.classList.add('scanning');
-  textEl.textContent = 'SCANNING...';
-  progress.style.display = 'flex';
-  stats.style.display = 'none';
-  grid.innerHTML = '';
-  fillEl.style.width = '0%';
-
-  // Progress animation — estimated ~2.5 min total
-  const totalMs  = 150000;
-  const started  = Date.now();
-  const progInterval = setInterval(() => {
-    const elapsed = Date.now() - started;
-    const pct     = Math.min((elapsed / totalMs) * 88, 88);
-    fillEl.style.width = pct + '%';
-    const rem  = Math.max(0, Math.round((totalMs - elapsed) / 1000));
-    const mins = Math.floor(rem / 60);
-    const secs = (rem % 60).toString().padStart(2, '0');
-    labelEl.textContent = rem > 0 ? `Scanning market... ~${mins}:${secs} remaining` : 'Finalising results...';
-  }, 1000);
+// ── AUTO-LOAD SCAN RESULTS ────────────────────────────────────
+async function loadScanResults() {
+  const grid = document.getElementById('scanResultsGrid');
 
   try {
-    const res  = await fetch(WORKER_URL + '/scan');
-    const data = await res.json();
+    const data = await API.scanResults();
 
-    clearInterval(progInterval);
-    fillEl.style.width = '100%';
-    labelEl.textContent = 'Scan complete';
-    setTimeout(() => { progress.style.display = 'none'; }, 1500);
+    if (data.ok && data.results?.length) {
+      localStorage.setItem('tsp_lastScan', JSON.stringify(data));
+      STATE.lastScan = data;
+      renderScanResults(data);
+      return;
+    }
 
-    if (data.error) throw new Error(data.error);
+    // KV empty but scan failed flag?
+    if (data.scanFailed) {
+      UI.showDataWarning('failed', 'Last overnight scan failed — showing previous results if available. ' + (data.failReason || ''));
+    }
 
-    // Persist last scan
-    localStorage.setItem('tsp_lastScan', JSON.stringify(data));
-    STATE.lastScan = data;
+    // Fall back to localStorage
+    if (STATE.lastScan?.results?.length) {
+      renderScanResults(STATE.lastScan);
+      UI.toast('Showing previous scan · ' + (STATE.lastScan.scanDate || ''));
+      return;
+    }
 
-    renderScanResults(data);
+    // Nothing yet
+    grid.innerHTML = `
+      <div class="scan-empty">
+        <div class="scan-empty-icon">道</div>
+        <div class="scan-empty-title">No results yet</div>
+        <div class="scan-empty-sub">The overnight scan runs at midnight UTC.<br>Come back after 7am UK time for today's recommendations.</div>
+      </div>`;
 
   } catch (e) {
-    clearInterval(progInterval);
-    progress.style.display = 'none';
-    grid.innerHTML = `<div class="scan-empty"><div class="scan-empty-icon">⚠</div><div class="scan-empty-title">Scan Error</div><div class="scan-empty-sub">${e.message}</div></div>`;
+    // Worker unreachable — fall back to localStorage
+    if (STATE.lastScan?.results?.length) {
+      renderScanResults(STATE.lastScan);
+      UI.toast('Offline — showing last saved scan');
+    } else {
+      grid.innerHTML = `
+        <div class="scan-empty">
+          <div class="scan-empty-icon">⚠</div>
+          <div class="scan-empty-title">Connection error</div>
+          <div class="scan-empty-sub">${e.message}</div>
+        </div>`;
+    }
   }
-
-  btn.disabled = false;
-  btn.classList.remove('scanning');
-  textEl.textContent = 'RUN SCAN';
 }
 
+// ── RENDER SCAN RESULTS ───────────────────────────────────────
 function renderScanResults(data) {
-  const grid  = document.getElementById('scanResultsGrid');
-  const stats = document.getElementById('funnelStats');
-  const date  = document.getElementById('funnelDate');
+  const grid = document.getElementById('scanResultsGrid');
 
-  // Funnel stats
-  UI.set('f-scanned',  data.scanned?.toLocaleString() || '—');
-  UI.set('f-filtered', data.filtered?.toLocaleString() || '—');
-  UI.set('f-phase2',   data.phase2?.toLocaleString() || '—');
-  UI.set('f-results',  data.results?.length || '—');
-  if (date && data.scanDate) date.textContent = 'Scan date: ' + data.scanDate;
-  stats.style.display = 'flex';
+  // Update meta subtitle
+  UI.updateScannerMeta(data);
+
+  // Stale data warning
+  if (UI.isStale(data.scanDate)) {
+    UI.showDataWarning('stale',
+      `Scan data is from ${data.scanDate} — this may be from a previous session. Results refresh nightly at midnight UTC.`
+    );
+  } else if (!data.scanFailed) {
+    UI.hideDataWarning();
+  }
 
   if (!data.results?.length) {
-    grid.innerHTML = '<div class="scan-empty"><div class="scan-empty-icon">道</div><div class="scan-empty-title">No setups found</div><div class="scan-empty-sub">No tickers met all scoring criteria today. Try again after market close.</div></div>';
+    grid.innerHTML = `
+      <div class="scan-empty">
+        <div class="scan-empty-icon">道</div>
+        <div class="scan-empty-title">No setups found</div>
+        <div class="scan-empty-sub">No tickers met all scoring criteria on ${data.scanDate || 'last scan'}.<br>Results refresh nightly.</div>
+      </div>`;
     return;
   }
 
@@ -417,10 +480,13 @@ function renderScanResults(data) {
     card.addEventListener('click', () => loadSymbol(card.dataset.ticker));
   });
 
-  // Auto-load top result
-  if (data.results[0]) loadSymbol(data.results[0].ticker);
+  // Auto-load top result on desktop only
+  if (!STATE.isMobile && data.results[0]) {
+    loadSymbol(data.results[0].ticker);
+  }
 }
 
+// ── RENDER SCAN CARD ──────────────────────────────────────────
 function renderScanCard(r, i) {
   const scoreClass = r.compositeScore >= 65 ? 'high' : r.compositeScore >= 45 ? 'mid' : '';
 
@@ -435,15 +501,18 @@ function renderScanCard(r, i) {
 
   const rrClass = r.rr >= 3 ? 'rr-good' : r.rr >= 2 ? 'rr-ok' : 'rr-low';
 
-  const signals = (r.signals || []).map(s => `<span class="scan-sig-tag">${s}</span>`).join('');
+  const signals = (r.signals || [])
+    .map(s => `<span class="scan-sig-tag">${s}</span>`)
+    .join('');
 
+  // Score breakdown — each letter is tappable for tooltip
   const scores = r.scores ? `
     <div class="score-breakdown">
-      <span class="score-seg" title="Momentum">M ${r.scores.momentum}</span>
-      <span class="score-seg" title="Trend">T ${r.scores.trend}</span>
-      <span class="score-seg" title="Volume">V ${r.scores.volume}</span>
-      <span class="score-seg" title="Squeeze">S ${r.scores.squeeze}</span>
-      <span class="score-seg" title="Quality">Q ${r.scores.quality}</span>
+      <span class="score-seg" onclick="showScoreTooltip('M', event)">M ${r.scores.momentum}</span>
+      <span class="score-seg" onclick="showScoreTooltip('T', event)">T ${r.scores.trend}</span>
+      <span class="score-seg" onclick="showScoreTooltip('V', event)">V ${r.scores.volume}</span>
+      <span class="score-seg" onclick="showScoreTooltip('S', event)">S ${r.scores.squeeze}</span>
+      <span class="score-seg" onclick="showScoreTooltip('Q', event)">Q ${r.scores.quality}</span>
     </div>` : '';
 
   return `
@@ -480,6 +549,8 @@ function renderScanCard(r, i) {
         <span>RSI ${r.rsi}</span>
         <span class="scan-stat-sep">·</span>
         <span>Vol ${r.volRatio}×</span>
+        <span class="scan-stat-sep">·</span>
+        <span>${r.dailyReturn >= 0 ? '+' : ''}${r.dailyReturn}%</span>
       </div>
 
       <div class="scan-signals">${signals}</div>
@@ -488,9 +559,22 @@ function renderScanCard(r, i) {
   `;
 }
 
+// ── SCORE TOOLTIP ─────────────────────────────────────────────
+function showScoreTooltip(key, event) {
+  event.stopPropagation(); // prevent card click loading chart
+  const t = SCORE_TOOLTIPS[key];
+  if (!t) return;
+  document.getElementById('scoreTooltipTitle').textContent = t.title;
+  document.getElementById('scoreTooltipText').textContent  = t.text;
+  document.getElementById('scoreTooltip').classList.add('open');
+}
+function closeScoreTooltip() {
+  document.getElementById('scoreTooltip').classList.remove('open');
+}
+
 // ── GEMINI AI SUMMARY ─────────────────────────────────────────
 async function generateAISummary() {
-  if (!STATE.activeSymbol) { UI.toast('Tap a scan result first', true); return; }
+  if (!STATE.activeSymbol) { UI.toast('Tap a result above first', true); return; }
   const cacheKey = `${STATE.activeSymbol}_${STATE.activeTf}`;
   const ind = STATE.indCache[cacheKey];
   if (!ind) { UI.toast('Load chart data first', true); return; }
@@ -536,26 +620,38 @@ async function loadMarketPills() {
         const el = document.getElementById(id);
         if (el) {
           el.textContent = '$' + UI.fmt(pc.price) + ' ' + (pc.changePct >= 0 ? '+' : '') + UI.fmt(pc.changePct) + '%';
-          el.className = 'pill-val ' + (pc.changePct >= 0 ? 'pos' : 'neg');
+          el.className   = 'pill-val ' + (pc.changePct >= 0 ? 'pos' : 'neg');
         }
       }
     } catch {}
   }
 }
 
-// ── HELPERS ───────────────────────────────────────────────────
-function closeTooltip() { document.getElementById('tooltipOverlay').classList.remove('open'); }
-
+// ── HEALTH CHECK ──────────────────────────────────────────────
 async function checkWorkerHealth() {
   try {
     const h = await API.health();
     UI.workerStatus(h.ok, !h.polygon || !h.gemini);
-  } catch { UI.workerStatus(false, false); }
+
+    // Show failure warning from health endpoint
+    if (h.scanFailed) {
+      UI.showDataWarning('failed',
+        'Last overnight scan failed — ' + (h.failReason || 'unknown error') + '. Previous results shown if available.'
+      );
+    }
+  } catch {
+    UI.workerStatus(false, false);
+  }
 }
 
 // ── INIT ──────────────────────────────────────────────────────
 function init() {
   Charts.init();
+
+  // Detect mobile on resize
+  window.addEventListener('resize', () => {
+    STATE.isMobile = window.innerWidth <= 900;
+  });
 
   // Timeframe buttons
   document.querySelectorAll('.tf-btn').forEach(btn => btn.addEventListener('click', () => {
@@ -574,15 +670,10 @@ function init() {
     if (STATE.ohlcvCache[ck] && STATE.indCache[ck]) Charts.render(STATE.ohlcvCache[ck], STATE.indCache[ck]);
   }));
 
-  // Health check + market pills
+  // Run on startup
   checkWorkerHealth();
+  loadScanResults();
   loadMarketPills();
-
-  // Restore last scan from localStorage
-  if (STATE.lastScan?.results?.length) {
-    renderScanResults(STATE.lastScan);
-    UI.toast('Showing last scan — click RUN SCAN to refresh');
-  }
 }
 
 document.addEventListener('DOMContentLoaded', init);
