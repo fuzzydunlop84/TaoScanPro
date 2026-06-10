@@ -200,6 +200,12 @@ const Charts = {
     this.ema20S  = this.main.addLineSeries({ color:'rgba(74,127,168,0.9)',  lineWidth:1, title:'EMA20'  });
     this.ema50S  = this.main.addLineSeries({ color:'rgba(200,136,42,0.8)',  lineWidth:1, title:'EMA50'  });
     this.ema200S = this.main.addLineSeries({ color:'rgba(201,64,64,0.7)',   lineWidth:1, title:'EMA200' });
+    this.volS    = this.main.addHistogramSeries({
+      priceFormat: { type: 'volume' },
+      priceScaleId: 'volume',
+      scaleMargins: { top: 0.8, bottom: 0 }
+    });
+    this.main.priceScale('volume').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
     this.rsiS      = this.rsi.addLineSeries({ color:'#7a8fa6', lineWidth:1.5 });
     this.macdLineS = this.macd.addLineSeries({ color:'#4a7fa8', lineWidth:1.5 });
     this.macdSigS  = this.macd.addLineSeries({ color:'#c8882a', lineWidth:1.5 });
@@ -225,6 +231,14 @@ const Charts = {
     this.ema20S.setData(STATE.overlays.ema20   ? this.toSeries(ind.ema20Arr,  candles, tv) : []);
     this.ema50S.setData(STATE.overlays.ema50   ? this.toSeries(ind.ema50Arr,  candles, tv) : []);
     this.ema200S.setData(STATE.overlays.ema200 ? this.toSeries(ind.ema200Arr, candles, tv) : []);
+    // Volume histogram — green up days, red down days, bottom 20% of chart
+    if (this.volS) {
+      this.volS.setData(candles.map(c => ({
+        time:  c.time,
+        value: c.volume,
+        color: c.close >= c.open ? 'rgba(76,175,125,0.4)' : 'rgba(201,64,64,0.4)'
+      })));
+    }
     this.rsiS.setData(this.toSeries(ind.rsiArr, candles, tv));
     this.macdLineS.setData(this.toSeries(ind.macdArr,    candles, tv));
     this.macdSigS.setData(this.toSeries(ind.macdSigArr,  candles, tv));
