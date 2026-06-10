@@ -219,6 +219,7 @@ const Charts = {
 
   render(candles, ind) {
     if (!candles?.length) return;
+    if (!this.mainSeries || !this.rsiS || !this.macdLineS) return; // guard if init failed
     const tv = v => ({ value: v });
     this.mainSeries.setData(candles);
     this.ema20S.setData(STATE.overlays.ema20   ? this.toSeries(ind.ema20Arr,  candles, tv) : []);
@@ -369,7 +370,8 @@ async function loadSymbol(symbol) {
 
   // Only auto-scroll on desktop
   if (!STATE.isMobile) {
-    document.getElementById('chartSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const chartSection = document.getElementById('chartSection');
+    if (chartSection) chartSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   UI.loading(true, `Loading ${symbol}...`);
