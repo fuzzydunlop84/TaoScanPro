@@ -506,30 +506,11 @@ function renderScanResults(data) {
 function renderScanCard(r, i) {
   const scoreClass = r.compositeScore >= 65 ? 'high' : r.compositeScore >= 45 ? 'mid' : '';
 
-  const earnClass = r.earningsFlag === 'red'    ? 'earn-red'
-                  : r.earningsFlag === 'yellow'  ? 'earn-yellow'
-                  : r.earningsFlag === 'green'   ? 'earn-green'
-                  : 'earn-unknown';
-  const earnLabel = r.earningsFlag === 'red'    ? '⚠ Earnings ≤2d'
-                  : r.earningsFlag === 'yellow'  ? '● Earnings 3-7d'
-                  : r.earningsFlag === 'green'   ? '✓ Clear runway'
-                  : '? Earnings';
-
   const rrClass = r.rr >= 3 ? 'rr-good' : r.rr >= 2 ? 'rr-ok' : 'rr-low';
 
   const signals = (r.signals || [])
     .map(s => `<span class="scan-sig-tag">${s}</span>`)
     .join('');
-
-  // Score breakdown — each letter is tappable for tooltip
-  const scores = r.scores ? `
-    <div class="score-breakdown">
-      <span class="score-seg" onclick="showScoreTooltip('M', event)">M ${r.scores.momentum}</span>
-      <span class="score-seg" onclick="showScoreTooltip('T', event)">T ${r.scores.trend}</span>
-      <span class="score-seg" onclick="showScoreTooltip('V', event)">V ${r.scores.volume}</span>
-      <span class="score-seg" onclick="showScoreTooltip('S', event)">S ${r.scores.squeeze}</span>
-      <span class="score-seg" onclick="showScoreTooltip('Q', event)">Q ${r.scores.quality}</span>
-    </div>` : '';
 
   return `
     <div class="scan-card" data-ticker="${r.ticker}" style="animation-delay:${i * 0.05}s">
@@ -540,7 +521,6 @@ function renderScanCard(r, i) {
         </div>
         <div class="scan-card-right">
           <span class="scan-score-badge ${scoreClass}">${r.compositeScore}/100</span>
-          <span class="earn-badge ${earnClass}">${earnLabel}</span>
         </div>
       </div>
 
@@ -568,11 +548,6 @@ function renderScanCard(r, i) {
         <span class="scan-stat-sep">·</span>
         <span>${r.dailyReturn >= 0 ? '+' : ''}${r.dailyReturn}%</span>
       </div>
-
-      <div class="scan-signals">${signals}</div>
-      ${scores}
-    </div>
-  `;
 }
 
 // ── SCORE TOOLTIP ─────────────────────────────────────────────
