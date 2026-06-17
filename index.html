@@ -31,7 +31,7 @@
       </div>
       <div class="api-status-group">
         <span class="api-dot" id="apiDot"></span>
-        <span class="api-label" id="apiLabel">Connecting...</span>
+        <span class="api-label" id="apiLabel">App error</span>
       </div>
     </div>
   </header>
@@ -55,10 +55,18 @@
       </div>
 
       <div class="scan-results-grid" id="scanResultsGrid"></div>
-        <div class="scan-empty">
-          <div class="scan-empty-icon">道</div>
-          <div class="scan-empty-title">Loading recommendations...</div>
-          <div class="scan-empty-sub">Fetching today's setups from overnight scan.</div>
+        <div class="ai-panel">
+            <div class="panel-hd">
+              <span class="panel-hd-title">AI Analysis</span>
+              <span class="ai-model-tag">Groq · LLaMA 3.3 70b</span>
+            </div>
+            <div class="ai-controls">
+              <button class="btn-analyze" id="btnAnalyze" onclick="generateAISummary()">Generate Summary</button>
+              <div class="ai-status-text" id="aiStatus"></div>
+            </div>
+            <div class="ai-output" id="aiContent">
+              <div class="ai-placeholder">Tap a result above to load its chart, then click Generate Summary.</div>
+            </div>
           </div>
     </section>
 
