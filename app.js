@@ -511,6 +511,7 @@ function renderScanCard(r, i) {
     .map(s => `<span class="scan-sig-tag">${s}</span>`)
     .join('');
 
+  // NOTICE THE BACKTICK ON THE LINE BELOW
   return `
     <div class="scan-card" data-ticker="${r.ticker}" style="animation-delay:${i * 0.05}s">
       <div class="scan-card-header">
@@ -550,7 +551,7 @@ function renderScanCard(r, i) {
 
       <div class="scan-signals">${signals}</div>
     </div>
-  `;
+  `; // NOTICE THE CLOSING BACKTICK AND SEMICOLON HERE
 }
 
 // ── SCORE TOOLTIP ─────────────────────────────────────────────
