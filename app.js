@@ -505,7 +505,6 @@ function renderScanResults(data) {
 // ── RENDER SCAN CARD ──────────────────────────────────────────
 function renderScanCard(r, i) {
   const scoreClass = r.compositeScore >= 65 ? 'high' : r.compositeScore >= 45 ? 'mid' : '';
-
   const rrClass = r.rr >= 3 ? 'rr-good' : r.rr >= 2 ? 'rr-ok' : 'rr-low';
 
   const signals = (r.signals || [])
@@ -548,6 +547,10 @@ function renderScanCard(r, i) {
         <span class="scan-stat-sep">·</span>
         <span>${r.dailyReturn >= 0 ? '+' : ''}${r.dailyReturn}%</span>
       </div>
+
+      <div class="scan-signals">${signals}</div>
+    </div>
+  `;
 }
 
 // ── SCORE TOOLTIP ─────────────────────────────────────────────
