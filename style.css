@@ -299,7 +299,24 @@ main { padding: 16px 0; display: flex; flex-direction: column; gap: 16px; }
 .ohlcv-table td:last-child  { color: var(--bright); text-align: right; }
 
 /* ── AI PANEL ────────────────────────────────────── */
-.ai-panel { border-top: 1px solid var(--chrome-4); display: flex; flex-direction: column; flex: 1; }
+
+/* Ensure the AI panel matches the look of a card */
+.ai-panel {
+    background: var(--dark-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Optional: Make it wider if you want it to fill the gap of two cards */
+@media (min-width: 1200px) {
+    #aiAnalysisBox {
+        grid-column: span 2; 
+    }
+}
 .ai-controls { padding: 10px 14px; border-bottom: 1px solid var(--chrome-4); display: flex; align-items: center; gap: 10px; }
 .btn-analyze {
   font-family: var(--sans); font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
