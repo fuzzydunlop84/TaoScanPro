@@ -12,7 +12,6 @@
 
 <div class="app-wrap">
 
-  <!-- HEADER -->
   <header>
     <div class="logo-group">
       <div class="logo">TaoScan<span class="logo-pro"> Pro</span></div>
@@ -31,20 +30,18 @@
       </div>
       <div class="api-status-group">
         <span class="api-dot" id="apiDot"></span>
-        <span class="api-label" id="apiLabel">App error</span>
+        <span class="api-label" id="apiLabel">Connecting...</span>
       </div>
     </div>
   </header>
 
   <main>
 
-    <!-- STALE / FAILURE WARNING -->
     <div class="data-warning" id="dataWarning" style="display:none">
       <span class="dw-icon" id="dataWarningIcon">⚠</span>
       <span class="dw-text" id="dataWarningText"></span>
     </div>
 
-    <!-- ══ SCANNER ══ -->
     <section class="scanner-section">
 
       <div class="scanner-topbar">
@@ -55,23 +52,24 @@
       </div>
 
       <div class="scan-results-grid" id="scanResultsGrid"></div>
-        <div class="ai-panel">
-            <div class="panel-hd">
-              <span class="panel-hd-title">AI Analysis</span>
-              <span class="ai-model-tag">Groq · LLaMA 3.3 70b</span>
-            </div>
-            <div class="ai-controls">
-              <button class="btn-analyze" id="btnAnalyze" onclick="generateAISummary()">Generate Summary</button>
-              <div class="ai-status-text" id="aiStatus"></div>
-            </div>
-            <div class="ai-output" id="aiContent">
-              <div class="ai-placeholder">Tap a result above to load its chart, then click Generate Summary.</div>
-            </div>
+      
+      <div class="ai-panel" id="aiPanelBox">
+          <div class="panel-hd">
+            <span class="panel-hd-title">AI Analysis</span>
+            <span class="ai-model-tag">Groq · LLaMA 3.3 70b</span>
+          </div>
+          <div class="ai-controls">
+            <button class="btn-analyze" id="btnAnalyze" onclick="generateAISummary()">Generate Summary</button>
+            <div class="ai-status-text" id="aiStatus"></div>
+          </div>
+          <div class="ai-output" id="aiContent">
+            <div class="ai-placeholder">Tap a result above to load its chart, then click Generate Summary.</div>
+          </div>
+      </div>
 
     </section>
 
-    <!-- ══ CHART + ANALYSIS ══ -->
-    <section class="chart-section">
+    <section class="chart-section" id="chartSection">
 
       <div class="chart-topbar">
         <div class="chart-symbol-group">
@@ -81,11 +79,8 @@
         </div>
         <div class="chart-controls">
           <div class="tf-group">
-            <button class="tf-btn" data-tf="5">5D</button>
-            <button class="tf-btn active" data-tf="30">1M</button>
-            <button class="tf-btn" data-tf="90">3M</button>
-            <button class="tf-btn" data-tf="180">6M</button>
-            <button class="tf-btn" data-tf="365">1Y</button>
+            <button class="tf-btn active" data-tf="90">3M (Execution)</button>
+            <button class="tf-btn" data-tf="365">1Y (Macro Trend)</button>
           </div>
           <div class="ov-group">
             <button class="ov-btn active" data-ov="ema20">EMA20</button>
@@ -96,42 +91,11 @@
       </div>
 
       <div class="chart-and-analysis">
-
         <div class="charts-col">
           <div class="candle-chart-wrap" id="mainChart"></div>
         </div>
-
-        <div class="analysis-col">
-
-          <div class="indicators-panel">
-            <div class="panel-hd">
-              <span class="panel-hd-title">Indicators</span>
-              <span class="panel-hd-sym" id="indSymLabel">—</span>
-            </div>
-            <div class="ind-grid">
-              <div class="ind-box">
-                <div class="ind-lbl">EMA 20</div>
-                <div class="ind-val" id="ib-ema20">—</div>
-                <div class="ind-sig" id="ib-ema20-sig">—</div>
-              </div>
-              <div class="ind-box">
-                <div class="ind-lbl">EMA 50</div>
-                <div class="ind-val" id="ib-ema50">—</div>
-                <div class="ind-sig" id="ib-ema50-sig">—</div>
-              </div>
-              <div class="ind-box">
-                <div class="ind-lbl">EMA 200</div>
-                <div class="ind-val" id="ib-ema200">—</div>
-                <div class="ind-sig" id="ib-ema200-sig">—</div>
-              </div>
-              <div class="ind-box">
-                <div class="ind-lbl">Vol / 20d Avg</div>
-                <div class="ind-val" id="ib-volavg">—</div>
-                <div class="ind-sig" id="ib-volavg-sig">—</div>
-              </div>
-            </div>
-        </div>
       </div>
+
     </section>
 
     <div class="page-footer">
