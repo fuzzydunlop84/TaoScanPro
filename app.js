@@ -33,7 +33,7 @@ const SCORE_TOOLTIPS = {
 // ── STATE ─────────────────────────────────────────────────────
 const STATE = {
   activeSymbol: null,
-  activeTf:     30,
+  activeTf:     90, // Changed default to 3M to match your new buttons
   overlays:     { ema20: true, ema50: true, ema200: true },
   ohlcvCache:   {},
   indCache:     {},
@@ -361,8 +361,8 @@ async function loadSymbol(symbol) {
     c.classList.toggle('active', c.dataset.ticker === symbol)
   );
 
-  // Only auto-scroll on desktop
-  if (!STATE.isMobile) {
+  // Only auto-scroll on mobile since the chart is now in the grid
+  if (STATE.isMobile) {
     const chartSection = document.getElementById('chartSection');
     if (chartSection) chartSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -468,7 +468,16 @@ function renderScanResults(data) {
     return;
   }
 
+  // 1. Render the cards
   grid.innerHTML = data.results.map((r, i) => renderScanCard(r, i)).join('');
+
+  // 2. MOVE THE CHART SECTION INTO THE GRID
+  const chartSection = document.getElementById('chartSection');
+  if (chartSection) grid.appendChild(chartSection);
+
+  // 3. MOVE THE AI PANEL INTO THE GRID 
+  const aiPanel = document.getElementById('aiPanelBox');
+  if (aiPanel) grid.appendChild(aiPanel);
 
   // Click handlers
   grid.querySelectorAll('.scan-card').forEach(card => {
@@ -486,9 +495,7 @@ function renderScanCard(r, i) {
   const scoreClass = r.compositeScore >= 65 ? 'high' : r.compositeScore >= 45 ? 'mid' : '';
   const rrClass = r.rr >= 3 ? 'rr-good' : r.rr >= 2 ? 'rr-ok' : 'rr-low';
 
-  const signals = (r.signals || [])
-    .map(s => `<span class="scan-sig-tag">${s}</span>`)
-    .join('');
+  // The Signal Logic has been completely removed from here!
 
   return `
     <div class="scan-card" data-ticker="${r.ticker}" style="animation-delay:${i * 0.05}s">
@@ -526,8 +533,6 @@ function renderScanCard(r, i) {
         <span class="scan-stat-sep">·</span>
         <span>${r.dailyReturn >= 0 ? '+' : ''}${r.dailyReturn}%</span>
       </div>
-
-      <div class="scan-signals">${signals}</div>
     </div>
   `; 
 }
