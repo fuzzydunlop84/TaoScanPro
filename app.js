@@ -1,39 +1,31 @@
 'use strict';
 /* ============================================================
-   TAOSCAN PRO — app.js  ·  Final clean version
-   Auto-loads KV results on startup. No scan button.
+   TAOSCAN PRO — app.js  ·  VPA Production Edition
+   Auto-loads KV results on startup. Synchronized with VPA Worker.
    ============================================================ */
 
 const WORKER_URL = 'https://taoscanpro.waddellb.workers.dev';
 
-// ── SCORE TOOLTIP CONTENT ─────────────────────────────────────
+// ── SCORE TOOLTIP CONTENT (Aligned with VPA Worker Keys) ──────
 const SCORE_TOOLTIPS = {
-  M: {
-    title: 'Momentum & Trigger (25%)',
-    text: 'RSI is between 30 and 55 AND turned up from yesterday — a momentum hook.\n\nMACD histogram is either positive, or its negative bars have been shrinking for 2 consecutive days — selling exhaustion.\n\nHigher score = stronger hook off a lower RSI base with MACD confirming.'
+  volPrice: {
+    title: 'Volume Price Analysis (Effort vs Result)',
+    text: 'Evaluates Anna Coulling’s VPA parameters:\n\n1. True Breakout: Strong institutional volume confirmed by a wide price spread.\n2. Stopping Volume: High volume near support narrowing the spread (insider absorption).\n3. No Supply: Low volume pullbacks on tight spreads signaling seller exhaustion.\n\nAnomalies like "Topping Volume" or "Fakeouts" are heavily penalized.'
   },
-  T: {
-    title: 'Trend & Support (25%)',
-    text: 'Price is within 0.5%–2% above an upward-sloping 50-day EMA.\n\nThis identifies the high-probability zone where institutions tend to defend price — close enough to the EMA to be a dip buy, but above it confirming the trend is intact.\n\nHigher score = tighter to the EMA support level.'
+  trend: {
+    title: 'Trend & Support Proximity',
+    text: 'Measures structural alignment with key moving averages.\n\nPoints are awarded when the price successfully defends or pulls back cleanly into the upward-sloping 20-day or 50-day EMA support tiers, maintaining macro trend integrity without overextending.'
   },
-  V: {
-    title: 'Volume Conviction (20%)',
-    text: 'Current day volume versus the 20-day average volume.\n\nA reading of 1.5× or above means significantly more shares changed hands than usual — a sign that institutional money is participating, not just retail noise.\n\nHigher score = stronger volume surge above the average.'
-  },
-  S: {
-    title: 'Volatility Squeeze (15%)',
-    text: 'Bollinger Bandwidth measures how compressed price action has been.\n\nA squeeze occurs when bandwidth is in the bottom 25% of its own 20-day range — like a coiled spring before a move.\n\nHigher score = tighter consolidation, more energy stored for a potential breakout.'
-  },
-  Q: {
-    title: 'Trend Quality (15%)',
-    text: 'Three quality checks:\n\n1. Is the 50-day EMA itself sloping upward? (Filters dead cat bounces)\n2. Is price in the lower third of its 20-day range but closing strongly? (Accumulation signal)\n3. Did the stock move less than 3% today? (Avoids chasing gap-ups)\n\nHigher score = cleaner trend with no chase risk.'
+  momentum: {
+    title: 'Momentum & Oscillator Confirmation',
+    text: 'Tracks underlying indicator setups:\n\n1. RSI Hook: RSI base sitting comfortably between 35 and 60 turning upward to confirm new accumulation.\n2. MACD Convergence: Histogram holding positive value or demonstrating downward structural seller exhaustion.'
   }
 };
 
 // ── STATE ─────────────────────────────────────────────────────
 const STATE = {
   activeSymbol: null,
-  activeTf:     90, // Changed default to 3M to match your new buttons
+  activeTf:     90, // Default to 3M View
   overlays:     { ema20: true, ema50: true, ema200: true },
   ohlcvCache:   {},
   indCache:     {},
@@ -108,10 +100,10 @@ const Ind = {
   overall(ind) {
     let score = 0, total = 0;
     const add = (s, w) => { score += s * w; total += w; };
-    if (ind.rsi != null)                         add(ind.rsi < 30 ? 1 : ind.rsi > 70 ? -1 : 0, 2);
-    if (ind.price && ind.ema20)                  add(ind.price > ind.ema20  ? 1 : -1, 1);
-    if (ind.price && ind.ema50)                  add(ind.price > ind.ema50  ? 1 : -1, 1);
-    if (ind.price && ind.ema200)                 add(ind.price > ind.ema200 ? 1 : -1, 2);
+    if (ind.rsi != null)                 add(ind.rsi < 30 ? 1 : ind.rsi > 70 ? -1 : 0, 2);
+    if (ind.price && ind.ema20)          add(ind.price > ind.ema20  ? 1 : -1, 1);
+    if (ind.price && ind.ema50)          add(ind.price > ind.ema50  ? 1 : -1, 1);
+    if (ind.price && ind.ema200)         add(ind.price > ind.ema200 ? 1 : -1, 2);
     if (ind.macd != null && ind.macdSig != null) add(ind.macd > ind.macdSig ? 1 : -1, 1);
     const pct = total ? score / total : 0;
     if (pct > 0.25)  return 'BULLISH';
@@ -216,14 +208,13 @@ const Charts = {
 
   render(candles, ind) {
     if (!candles?.length) return;
-    if (!this.mainSeries) return; // guard if init failed
+    if (!this.mainSeries) return; 
     const tv = v => ({ value: v });
     this.mainSeries.setData(candles);
     this.ema20S.setData(STATE.overlays.ema20   ? this.toSeries(ind.ema20Arr,  candles, tv) : []);
     this.ema50S.setData(STATE.overlays.ema50   ? this.toSeries(ind.ema50Arr,  candles, tv) : []);
     this.ema200S.setData(STATE.overlays.ema200 ? this.toSeries(ind.ema200Arr, candles, tv) : []);
     
-    // Volume histogram — green up days, red down days, bottom 20% of chart
     if (this.volS) {
       this.volS.setData(candles.map(c => ({
         time:  c.time,
@@ -277,7 +268,7 @@ const UI = {
     const el   = document.getElementById('dataWarning');
     const icon = document.getElementById('dataWarningIcon');
     const txt  = document.getElementById('dataWarningText');
-    el.className  = 'data-warning ' + type;
+    el.className   = 'data-warning ' + type;
     icon.textContent = type === 'failed' ? '✕' : '⚠';
     txt.textContent  = text;
     el.style.display = 'flex';
@@ -303,7 +294,7 @@ const UI = {
     const now     = new Date();
     const diffMs  = now - scan;
     const diffDays = diffMs / (1000 * 60 * 60 * 24);
-    return diffDays > 1.5; // stale if more than 1.5 calendar days old
+    return diffDays > 1.5; 
   },
 
   updateIndicators(ind) {
@@ -356,12 +347,10 @@ const UI = {
 async function loadSymbol(symbol) {
   STATE.activeSymbol = symbol;
 
-  // Highlight active card
   document.querySelectorAll('.scan-card').forEach(c =>
     c.classList.toggle('active', c.dataset.ticker === symbol)
   );
 
-  // Only auto-scroll on mobile since the chart is now in the grid
   if (STATE.isMobile) {
     const chartSection = document.getElementById('chartSection');
     if (chartSection) chartSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -406,19 +395,16 @@ async function loadScanResults() {
       return;
     }
 
-    // KV empty but scan failed flag?
     if (data.scanFailed) {
       UI.showDataWarning('failed', 'Last overnight scan failed — showing previous results if available. ' + (data.failReason || ''));
     }
 
-    // Fall back to localStorage
     if (STATE.lastScan?.results?.length) {
       renderScanResults(STATE.lastScan);
       UI.toast('Showing previous scan · ' + (STATE.lastScan.scanDate || ''));
       return;
     }
 
-    // Nothing yet
     grid.innerHTML = `
       <div class="scan-empty">
         <div class="scan-empty-icon">道</div>
@@ -427,7 +413,6 @@ async function loadScanResults() {
       </div>`;
 
   } catch (e) {
-    // Worker unreachable — fall back to localStorage
     if (STATE.lastScan?.results?.length) {
       renderScanResults(STATE.lastScan);
       UI.toast('Offline — showing last saved scan');
@@ -446,10 +431,8 @@ async function loadScanResults() {
 function renderScanResults(data) {
   const grid = document.getElementById('scanResultsGrid');
 
-  // Update meta subtitle
   UI.updateScannerMeta(data);
 
-  // Stale data warning
   if (UI.isStale(data.scanDate)) {
     UI.showDataWarning('stale',
       `Scan data is from ${data.scanDate} — this may be from a previous session. Results refresh nightly at midnight UTC.`
@@ -468,23 +451,18 @@ function renderScanResults(data) {
     return;
   }
 
-  // 1. Render the cards
   grid.innerHTML = data.results.map((r, i) => renderScanCard(r, i)).join('');
 
-  // 2. MOVE THE CHART SECTION INTO THE GRID
   const chartSection = document.getElementById('chartSection');
   if (chartSection) grid.appendChild(chartSection);
 
-  // 3. MOVE THE AI PANEL INTO THE GRID 
   const aiPanel = document.getElementById('aiPanelBox');
   if (aiPanel) grid.appendChild(aiPanel);
 
-  // Click handlers
   grid.querySelectorAll('.scan-card').forEach(card => {
     card.addEventListener('click', () => loadSymbol(card.dataset.ticker));
   });
 
-  // Auto-load top result on desktop only
   if (!STATE.isMobile && data.results[0]) {
     loadSymbol(data.results[0].ticker);
   }
@@ -494,8 +472,6 @@ function renderScanResults(data) {
 function renderScanCard(r, i) {
   const scoreClass = r.compositeScore >= 65 ? 'high' : r.compositeScore >= 45 ? 'mid' : '';
   const rrClass = r.rr >= 3 ? 'rr-good' : r.rr >= 2 ? 'rr-ok' : 'rr-low';
-
-  // The Signal Logic has been completely removed from here!
 
   return `
     <div class="scan-card" data-ticker="${r.ticker}" style="animation-delay:${i * 0.05}s">
@@ -539,7 +515,7 @@ function renderScanCard(r, i) {
 
 // ── SCORE TOOLTIP ─────────────────────────────────────────────
 function showScoreTooltip(key, event) {
-  event.stopPropagation(); // prevent card click loading chart
+  event.stopPropagation(); 
   const t = SCORE_TOOLTIPS[key];
   if (!t) return;
   document.getElementById('scoreTooltipTitle').textContent = t.title;
@@ -611,7 +587,6 @@ async function checkWorkerHealth() {
     const h = await API.health();
     UI.workerStatus(h.ok, !h.polygon || !h.gemini);
 
-    // Show failure warning from health endpoint
     if (h.scanFailed) {
       UI.showDataWarning('failed',
         'Last overnight scan failed — ' + (h.failReason || 'unknown error') + '. Previous results shown if available.'
@@ -626,12 +601,10 @@ async function checkWorkerHealth() {
 function init() {
   Charts.init();
 
-  // Detect mobile on resize
   window.addEventListener('resize', () => {
     STATE.isMobile = window.innerWidth <= 900;
   });
 
-  // Timeframe buttons
   document.querySelectorAll('.tf-btn').forEach(btn => btn.addEventListener('click', () => {
     document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
@@ -639,7 +612,6 @@ function init() {
     if (STATE.activeSymbol) loadSymbol(STATE.activeSymbol);
   }));
 
-  // Overlay toggles
   document.querySelectorAll('.ov-btn').forEach(btn => btn.addEventListener('click', () => {
     const ov = btn.dataset.ov;
     STATE.overlays[ov] = !STATE.overlays[ov];
@@ -648,7 +620,6 @@ function init() {
     if (STATE.ohlcvCache[ck] && STATE.indCache[ck]) Charts.render(STATE.ohlcvCache[ck], STATE.indCache[ck]);
   }));
 
-  // Run on startup
   checkWorkerHealth();
   loadScanResults();
   loadMarketPills();
