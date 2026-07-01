@@ -526,33 +526,40 @@ function closeScoreTooltip() {
   document.getElementById('scoreTooltip').classList.remove('open');
 }
 
-// ── GEMINI AI SUMMARY ─────────────────────────────────────────
+// ──  AI SUMMARY ─────────────────────────────────────────
 async function generateAISummary() {
   if (!STATE.activeSymbol) { UI.toast('Tap a result above first', true); return; }
   const cacheKey = `${STATE.activeSymbol}_${STATE.activeTf}`;
   const ind = STATE.indCache[cacheKey];
-  if (!ind) { UI.toast('Load chart data first', true); return; }
+  const candles = STATE.ohlcvCache[cacheKey];
+  if (!ind || !candles || !candles.length) { UI.toast('Load chart data first', true); return; }
 
   const btn     = document.getElementById('btnAnalyze');
   const content = document.getElementById('aiContent');
   const status  = document.getElementById('aiStatus');
   btn.disabled  = true;
   status.textContent = 'Generating...';
-  content.innerHTML  = '<span class="ai-typing">Analysing indicators</span>';
+  content.innerHTML  = '<span class="ai-typing">Analysing VPA volume & spread</span>';
 
   const overall = Ind.overall(ind);
-  const tfLabel = STATE.activeTf <= 10 ? 'intraday' : STATE.activeTf <= 30 ? '1-month' : STATE.activeTf <= 90 ? '3-month' : '1-year';
+  const currentCandle = candles[candles.length - 1];
+  
+  // Calculate VPA-specific values locally for the prompt
+  const spread = currentCandle.high - currentCandle.low;
+  const closePos = spread > 0 ? (currentCandle.close - currentCandle.low) / spread : 0.5;
+  const volRatio = ind.vol && ind.volAvg ? (ind.vol / ind.volAvg) : 1.0;
+  
+  // Determine Candle Type for the AI
+  const candleBody = currentCandle.close >= currentCandle.open ? "Green/Bullish" : "Red/Bearish";
 
-  const prompt = `You are a sharp technical analyst. In 3 concise sentences, give a plain English trade summary for ${STATE.activeSymbol} based on these ${tfLabel} indicators:
+  const prompt = `You are an expert technical analyst practicing Anna Coulling's Volume Price Analysis. Provide a 3-sentence institutional-grade trade thesis for ${STATE.activeSymbol} using ONLY these pure VPA parameters:
 
-RSI(14): ${UI.fmt(ind.rsi)} ${ind.rsi < 30 ? '(oversold)' : ind.rsi > 70 ? '(overbought)' : '(neutral range)'}
-EMA20: $${UI.fmt(ind.ema20)} | EMA50: $${UI.fmt(ind.ema50)} | EMA200: $${UI.fmt(ind.ema200)}
-Price: $${UI.fmt(ind.price)} — ${ind.price > (ind.ema200||0) ? 'ABOVE' : 'BELOW'} EMA200
-MACD: ${UI.fmt(ind.macd,4)} vs Signal ${UI.fmt(ind.macdSig,4)} — Hist ${UI.fmt(ind.macdHist,4)}
-Volume: ${UI.fmtVol(ind.vol)} vs 20-day avg ${UI.fmtVol(ind.volAvg)} = ${ind.vol&&ind.volAvg?(ind.vol/ind.volAvg).toFixed(1)+'×':'N/A'} avg
-Overall composite signal: ${overall}
+1. Effort (Volume Ratio): ${volRatio.toFixed(1)}x its 20-day average volume.
+2. Result (Spread & Close): The candle is ${candleBody} with a total spread of $${UI.fmt(spread)}. It closed at the ${Math.round(closePos * 100)}% mark of its daily range (measured from absolute Low to High).
+3. Structural Context: Current Close is $${UI.fmt(ind.price)} sitting relative to EMA supports (EMA20: $${UI.fmt(ind.ema20)}, EMA50: $${UI.fmt(ind.ema50)}).
+4. System Classification: The scanner flagged this setup as a "${overall}" macro environment.
 
-Be direct and specific. Mention key price levels implied by the EMAs. Note momentum direction and any divergences. End with a clear bias and key level to watch.`;
+Analyze the relationship between the Effort (volume) and Result (price spread/close position). Identify if this represents true institutional validation (Breakout / Stopping Volume / No Supply) or a market maker manipulation anomaly (Topping Volume / Low Volume Fakeout). End with a definitive directional bias and the key EMA level to watch.`;
 
   try {
     const result = await API.gemini(prompt);
@@ -564,7 +571,6 @@ Be direct and specific. Mention key price levels implied by the EMAs. Note momen
   }
   btn.disabled = false;
 }
-
 // ── MARKET PILLS ──────────────────────────────────────────────
 async function loadMarketPills() {
   for (const { sym, id } of [{ sym:'SPY', id:'spy-val' }, { sym:'QQQ', id:'qqq-val' }]) {
