@@ -47,7 +47,7 @@
       <div class="scanner-topbar">
         <div class="scanner-title-group">
           <span class="scanner-title">Today's Setups</span>
-          <span class="scanner-subtitle" id="scannerLastRun">Scanning US market nightly · Volume surge · Momentum hook · EMA support · Volatility</span>
+          <span class="scanner-subtitle" id="scannerLastRun">Scanning US market · Volume Price Analysis (VPA) · Effort vs Result</span>
         </div>
       </div>
 
@@ -77,6 +77,16 @@
           <span class="chart-price" id="chartPrice"></span>
           <span class="chart-change" id="chartChange"></span>
         </div>
+        
+        <div class="chart-legend" id="chartLegend">
+          <span class="legend-date" id="ohlc-d">—</span>
+          <span>O: <span class="legend-val" id="ohlc-o">—</span></span>
+          <span>H: <span class="legend-val" id="ohlc-h">—</span></span>
+          <span>L: <span class="legend-val" id="ohlc-l">—</span></span>
+          <span>C: <span class="legend-val" id="ohlc-c">—</span></span>
+          <span>V: <span class="legend-val" id="ohlc-v">—</span></span>
+        </div>
+
         <div class="chart-controls">
           <div class="tf-group">
             <button class="tf-btn active" data-tf="90">3M (Execution)</button>
@@ -105,6 +115,16 @@
     </div>
 
   </main>
+</div>
+
+<div class="score-tooltip-overlay" id="scoreTooltip">
+  <div class="score-tooltip-box">
+    <div class="tooltip-hd">
+      <h3 id="scoreTooltipTitle">Score Component</h3>
+      <button class="btn-close-tooltip" onclick="closeScoreTooltip()">✕</button>
+    </div>
+    <div class="tooltip-body" id="scoreTooltipText"></div>
+  </div>
 </div>
 
 <div class="loading-overlay" id="loadingOverlay" style="display:none">
