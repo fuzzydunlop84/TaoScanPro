@@ -9,6 +9,38 @@ const SCORE_TOOLTIPS = {
   volPrice: {
     title: 'Volume Price Analysis (Effort vs Result)',
     text: 'Evaluates Anna Coulling’s VPA anomalies:\n\n1. Breakaway & Gap Fills: Validates institutional gaps and detects retail traps.\n2. Climaxes & Dojis: Flags selling climaxes (Hammers) and extreme indecision.\n3. Absorption: High volume with narrow spreads (Stopping Volume).\n4. Exhaustion: Low volume tests and "No Supply" pullbacks.'
+  },
+  'Shakeout Spring': {
+    title: 'Wyckoff Shakeout / Spring',
+    text: 'Institutional Action:\n\nMarket makers deliberately drive the price below key 20-day support levels to trigger retail panic stop-losses. This allows institutions to absorb those forced sell orders at wholesale prices right before launching the price back upward.'
+  },
+  'Breakaway Gap': {
+    title: 'Breakaway Gap',
+    text: 'Institutional Action:\n\nTrue trend initialization. Major funds are buying so aggressively at the opening bell that they clear out all available overhead supply instantly, creating a structural void of price action beneath them.'
+  },
+  'Gap Fill Bounce': {
+    title: 'Gap Fill Bounce',
+    text: 'Institutional Action:\n\nA successful retest of structural space. The stock gaps open, drifts down to test if aggressive sellers will emerge inside yesterday\'s territory, finds no opposition, and is forcefully bought back up by institutions defending the floor.'
+  },
+  'Stopping Vol': {
+    title: 'Stopping Volume (Absorption)',
+    text: 'Institutional Action:\n\nClassic insider absorption. A massive wave of retail or macro selling pressure is hitting the stock, but institutions step in with massive buy orders at a fixed level, capping the downside and stopping the fall.'
+  },
+  'Breakout': {
+    title: 'Validated Breakout',
+    text: 'Institutional Action:\n\nEffort is completely validated by result. High institutional money flow (effort) is perfectly synchronized with an exceptionally wide daily candlestick price spread (result) clearing overhead resistance.'
+  },
+  'The Test': {
+    title: 'The Supply Test',
+    text: 'Institutional Action:\n\nInsiders drop the price intentionally to probe for any remaining overhead supply. Because volume completely dries up on the dip, it proves to the market makers that no major sellers are left to fight them, signaling a green light to mark the price up.'
+  },
+  'No Supply': {
+    title: 'No Supply Pullback',
+    text: 'Institutional Action:\n\nSeller exhaustion. A minor downward consolidation day that prints on exceptionally low volume. This confirms that institutions are not liquidating their inventory; the minor selling is purely uncoordinated retail noise.'
+  },
+  'Continuation': {
+    title: 'Trend Continuation',
+    text: 'Institutional Action:\n\nA healthy, orderly day of trend continuation. While it lacks a massive structural anomaly or market maker manipulation footprint today, the stock exhibits robust moving average alignments and institutional volume support.'
   }
 };
 
@@ -276,8 +308,15 @@ function renderScanCard(r, i) {
   const scoreClass = r.compositeScore >= 65 ? 'high' : r.compositeScore >= 45 ? 'mid' : '';
   const rrClass = r.rr >= 3 ? 'rr-good' : r.rr >= 2 ? 'rr-ok' : 'rr-low';
   
-  const playType = r.signals.find(s => s.startsWith('VPA:')) || 'VPA: Setup';
+  const playType = r.signals.find(s => s.startsWith('VPA:')) || 'VPA: Continuation';
   const displayTag = playType.replace('VPA: ', '');
+
+  // Dynamic color router
+  let colorClass = 'tag-grey';
+  if (['Breakout', 'Breakaway Gap'].includes(displayTag)) colorClass = 'tag-green';
+  else if (['Shakeout Spring', 'Gap Fill Bounce'].includes(displayTag)) colorClass = 'tag-blue';
+  else if (['Stopping Vol', 'Gap Down Absorption'].includes(displayTag)) colorClass = 'tag-amber';
+  else if (['The Test', 'No Supply'].includes(displayTag)) colorClass = 'tag-steel';
 
   return `
     <div class="scan-card" data-ticker="${r.ticker}" style="animation-delay:${i * 0.05}s">
@@ -285,7 +324,8 @@ function renderScanCard(r, i) {
         <div class="scan-card-left">
           <span class="scan-rank">#${r.rank}</span>
           <span class="scan-ticker">${r.ticker}</span>
-          <span class="scan-play-tag">${displayTag}</span>
+          <!-- Tooltip trigger and color class linked up here -->
+          <span class="scan-play-tag ${colorClass}" onclick="showScoreTooltip('${displayTag}', event)">${displayTag}</span>
         </div>
         <div class="scan-card-right">
           <span class="scan-score-badge ${scoreClass}" onclick="showScoreTooltip('volPrice', event)">${r.compositeScore}/100</span>
