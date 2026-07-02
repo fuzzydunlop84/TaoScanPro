@@ -1,31 +1,20 @@
 'use strict';
 /* ============================================================
-   TAOSCAN PRO — app.js  ·  VPA Production Edition
-   Auto-loads KV results on startup. Synchronized with VPA Worker.
+   TAOSCAN PRO — app.js  ·  VPA Production Edition (Mobile Fast)
    ============================================================ */
 
 const WORKER_URL = 'https://taoscanpro.waddellb.workers.dev';
 
-// ── SCORE TOOLTIP CONTENT (Aligned with VPA Worker Keys) ──────
 const SCORE_TOOLTIPS = {
   volPrice: {
     title: 'Volume Price Analysis (Effort vs Result)',
     text: 'Evaluates Anna Coulling’s VPA parameters:\n\n1. True Breakout: Strong institutional volume confirmed by a wide price spread.\n2. Stopping Volume: High volume near support narrowing the spread (insider absorption).\n3. No Supply: Low volume pullbacks on tight spreads signaling seller exhaustion.\n\nAnomalies like "Topping Volume" or "Fakeouts" are heavily penalized.'
-  },
-  trend: {
-    title: 'Trend & Support Proximity',
-    text: 'Measures structural alignment with key moving averages.\n\nPoints are awarded when the price successfully defends or pulls back cleanly into the upward-sloping 20-day or 50-day EMA support tiers, maintaining macro trend integrity without overextending.'
-  },
-  momentum: {
-    title: 'Momentum & Oscillator Confirmation',
-    text: 'Tracks underlying indicator setups:\n\n1. RSI Hook: RSI base sitting comfortably between 35 and 60 turning upward to confirm new accumulation.\n2. MACD Convergence: Histogram holding positive value or demonstrating downward structural seller exhaustion.'
   }
 };
 
-// ── STATE ─────────────────────────────────────────────────────
 const STATE = {
   activeSymbol: null,
-  activeTf:     90, // Default to 3M View
+  activeTf:     90,
   overlays:     { ema20: true, ema50: true, ema200: true },
   ohlcvCache:   {},
   indCache:     {},
@@ -33,7 +22,7 @@ const STATE = {
   isMobile:     window.innerWidth <= 900
 };
 
-// ── INDICATOR MATH ────────────────────────────────────────────
+// ── PURE VPA MATH (No Lagging Oscillators) ────────────────────
 const Ind = {
   ema(arr, period) {
     const k = 2 / (period + 1);
@@ -45,31 +34,6 @@ const Ind = {
     }
     return out;
   },
-
-  rsi(closes, period = 14) {
-    const out = new Array(closes.length).fill(null);
-    let ag = 0, al = 0;
-    for (let i = 1; i <= period; i++) { const d = closes[i]-closes[i-1]; if(d>0) ag+=d; else al-=d; }
-    ag /= period; al /= period;
-    out[period] = 100 - 100 / (1 + ag / (al || 1e-10));
-    for (let i = period+1; i < closes.length; i++) {
-      const d = closes[i]-closes[i-1];
-      ag = (ag*(period-1) + Math.max(d,0)) / period;
-      al = (al*(period-1) + Math.max(-d,0)) / period;
-      out[i] = 100 - 100 / (1 + ag / (al || 1e-10));
-    }
-    return out;
-  },
-
-  macd(closes, fast=12, slow=26, sig=9) {
-    const ef = this.ema(closes, fast);
-    const es = this.ema(closes, slow);
-    const ml = ef.map((v,i) => (v!=null && es[i]!=null) ? v-es[i] : null);
-    const sl = this.ema(ml.map(v => v??0), sig);
-    const hs = ml.map((v,i) => (v!=null && sl[i]!=null) ? v-sl[i] : null);
-    return { ml, sl, hs };
-  },
-
   volAvg(vols, period=20) {
     const out = new Array(vols.length).fill(null);
     for (let i = period-1; i < vols.length; i++) {
@@ -77,37 +41,34 @@ const Ind = {
     }
     return out;
   },
-
   compute(candles) {
     const closes = candles.map(c => c.close);
     const vols   = candles.map(c => c.volume);
-    const rsiArr    = this.rsi(closes);
     const ema20Arr  = this.ema(closes, 20);
     const ema50Arr  = this.ema(closes, 50);
     const ema200Arr = this.ema(closes, 200);
-    const { ml: macdArr, sl: macdSigArr, hs: macdHistArr } = this.macd(closes);
     const volAvgArr = this.volAvg(vols);
     const n = candles.length - 1;
     return {
-      price: closes[n], rsi: rsiArr[n],
+      price: closes[n], 
       ema20: ema20Arr[n], ema50: ema50Arr[n], ema200: ema200Arr[n],
-      macd: macdArr[n], macdSig: macdSigArr[n], macdHist: macdHistArr[n],
       vol: vols[n], volAvg: volAvgArr[n],
-      rsiArr, ema20Arr, ema50Arr, ema200Arr, macdArr, macdSigArr, macdHistArr
+      ema20Arr, ema50Arr, ema200Arr
     };
   },
-
   overall(ind) {
     let score = 0, total = 0;
     const add = (s, w) => { score += s * w; total += w; };
-    if (ind.rsi != null)                 add(ind.rsi < 30 ? 1 : ind.rsi > 70 ? -1 : 0, 2);
-    if (ind.price && ind.ema20)          add(ind.price > ind.ema20  ? 1 : -1, 1);
-    if (ind.price && ind.ema50)          add(ind.price > ind.ema50  ? 1 : -1, 1);
-    if (ind.price && ind.ema200)         add(ind.price > ind.ema200 ? 1 : -1, 2);
-    if (ind.macd != null && ind.macdSig != null) add(ind.macd > ind.macdSig ? 1 : -1, 1);
+    if (ind.price && ind.ema20)  add(ind.price > ind.ema20  ? 1 : -1, 2);
+    if (ind.price && ind.ema50)  add(ind.price > ind.ema50  ? 1 : -1, 1);
+    if (ind.price && ind.ema200) add(ind.price > ind.ema200 ? 1 : -1, 1);
+    if (ind.vol && ind.volAvg) {
+      const volRatio = ind.vol / ind.volAvg;
+      if (volRatio > 1.5) add(ind.price > ind.ema20 ? 2 : -2, 2); 
+    }
     const pct = total ? score / total : 0;
-    if (pct > 0.25)  return 'BULLISH';
-    if (pct < -0.25) return 'BEARISH';
+    if (pct >= 0.4)  return 'BULLISH';
+    if (pct <= -0.4) return 'BEARISH';
     return 'NEUTRAL';
   }
 };
@@ -122,7 +83,6 @@ const API = {
     if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || `Error ${res.status}`); }
     return res.json();
   },
-
   async gemini(prompt) {
     const res = await fetch(WORKER_URL + '/gemini', {
       method: 'POST',
@@ -132,32 +92,17 @@ const API = {
     if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || `Error ${res.status}`); }
     return res.json();
   },
-
-  async health() {
-    const res = await fetch(WORKER_URL + '/health');
-    return res.json();
-  },
-
-  async scanResults() {
-    const res = await fetch(WORKER_URL + '/scan');
-    return res.json();
-  },
-
+  async health() { const res = await fetch(WORKER_URL + '/health'); return res.json(); },
+  async scanResults() { const res = await fetch(WORKER_URL + '/scan'); return res.json(); },
   async aggs(symbol, days) {
-    const end   = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - days - 250);
-    const from     = start.toISOString().slice(0,10);
-    const to       = end.toISOString().slice(0,10);
-    const timespan = days <= 10 ? 'hour' : 'day';
+    const end = new Date(); const start = new Date(); start.setDate(start.getDate() - days - 250);
     const json = await this.polygon(
-      `/v2/aggs/ticker/${symbol}/range/1/${timespan}/${from}/${to}`,
+      `/v2/aggs/ticker/${symbol}/range/1/${days <= 10 ? 'hour' : 'day'}/${start.toISOString().slice(0,10)}/${end.toISOString().slice(0,10)}`,
       { adjusted: 'true', sort: 'asc', limit: '5000' }
     );
     if (!json.results?.length) throw new Error(`No data for ${symbol}`);
     return json.results.map(c => ({ time: Math.floor(c.t/1000), open: c.o, high: c.h, low: c.l, close: c.c, volume: c.v }));
   },
-
   async prevClose(symbol) {
     try {
       const json = await this.polygon(`/v2/aggs/ticker/${symbol}/prev`);
@@ -170,9 +115,7 @@ const API = {
 
 // ── CHART ENGINE ──────────────────────────────────────────────
 const Charts = {
-  main: null,
-  mainSeries: null, ema20S: null, ema50S: null, ema200S: null, volS: null,
-
+  main: null, mainSeries: null, ema20S: null, ema50S: null, ema200S: null, volS: null,
   OPTS: {
     layout: { background: { type: 'solid', color: '#0d0e10' }, textColor: '#6b7585', fontSize: 10, fontFamily: "'Share Tech Mono', monospace" },
     grid: { vertLines: { color: 'rgba(74,80,96,0.4)' }, horzLines: { color: 'rgba(74,80,96,0.4)' } },
@@ -180,49 +123,35 @@ const Charts = {
     rightPriceScale: { borderColor: 'rgba(74,80,96,0.6)' },
     timeScale: { borderColor: 'rgba(74,80,96,0.6)', timeVisible: true, secondsVisible: false }
   },
-
   init() {
     const g = id => document.getElementById(id);
     this.main = LightweightCharts.createChart(g('mainChart'),  { ...this.OPTS, width: g('mainChart').offsetWidth,  height: g('mainChart').offsetHeight  });
-
     this.mainSeries = this.main.addCandlestickSeries({ upColor:'#4caf7d', downColor:'#c94040', borderUpColor:'#4caf7d', borderDownColor:'#c94040', wickUpColor:'#4caf7d', wickDownColor:'#c94040' });
     this.ema20S  = this.main.addLineSeries({ color:'rgba(74,127,168,0.9)',  lineWidth:1, title:'EMA20'  });
     this.ema50S  = this.main.addLineSeries({ color:'rgba(200,136,42,0.8)',  lineWidth:1, title:'EMA50'  });
     this.ema200S = this.main.addLineSeries({ color:'rgba(201,64,64,0.7)',   lineWidth:1, title:'EMA200' });
-    this.volS    = this.main.addHistogramSeries({
-      priceFormat: { type: 'volume' },
-      priceScaleId: 'volume',
-      scaleMargins: { top: 0.8, bottom: 0 }
-    });
+    this.volS    = this.main.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'volume', scaleMargins: { top: 0.8, bottom: 0 } });
     this.main.priceScale('volume').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
 
-    const ro = new ResizeObserver(() => {
-      if (this.main) this.main.resize(g('mainChart').offsetWidth, g('mainChart').offsetHeight);
+    // MOBILE ROBUST RESIZE
+    const ro = new ResizeObserver(entries => {
+      if (!this.main || !entries.length) return;
+      const { width, height } = entries[0].contentRect;
+      this.main.resize(width, height);
     });
     ['mainChart'].forEach(id => ro.observe(g(id)));
   },
-
-  toSeries(arr, candles, fn) {
-    return arr.map((v,i) => (v!=null && candles[i]) ? { time:candles[i].time, ...fn(v) } : null).filter(Boolean);
-  },
-
+  toSeries(arr, candles, fn) { return arr.map((v,i) => (v!=null && candles[i]) ? { time:candles[i].time, ...fn(v) } : null).filter(Boolean); },
   render(candles, ind) {
-    if (!candles?.length) return;
-    if (!this.mainSeries) return; 
+    if (!candles?.length || !this.mainSeries) return; 
     const tv = v => ({ value: v });
     this.mainSeries.setData(candles);
     this.ema20S.setData(STATE.overlays.ema20   ? this.toSeries(ind.ema20Arr,  candles, tv) : []);
     this.ema50S.setData(STATE.overlays.ema50   ? this.toSeries(ind.ema50Arr,  candles, tv) : []);
     this.ema200S.setData(STATE.overlays.ema200 ? this.toSeries(ind.ema200Arr, candles, tv) : []);
-    
     if (this.volS) {
-      this.volS.setData(candles.map(c => ({
-        time:  c.time,
-        value: c.volume,
-        color: c.close >= c.open ? 'rgba(76,175,125,0.4)' : 'rgba(201,64,64,0.4)'
-      })));
+      this.volS.setData(candles.map(c => ({ time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(76,175,125,0.4)' : 'rgba(201,64,64,0.4)' })));
     }
-    
     this.main.timeScale().fitContent();
   }
 };
@@ -238,241 +167,115 @@ const UI = {
     return String(n);
   },
   set(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; },
-  setSig(id, text, cls) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.textContent = text;
-    el.className = 'ind-sig ' + (cls || '');
-  },
   toast(msg, isErr) {
-    const el = document.getElementById('saveToast');
-    el.textContent = msg;
-    el.style.borderColor = isErr ? 'var(--red-dim)' : 'var(--sheen)';
-    el.style.color = isErr ? 'var(--red)' : 'var(--silver)';
-    el.classList.add('show');
-    setTimeout(() => el.classList.remove('show'), 3500);
+    const el = document.getElementById('saveToast'); el.textContent = msg;
+    el.style.borderColor = isErr ? 'var(--red-dim)' : 'var(--sheen)'; el.style.color = isErr ? 'var(--red)' : 'var(--silver)';
+    el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 3500);
   },
-  loading(show, msg) {
-    document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
-    if (msg) document.getElementById('loadingText').textContent = msg;
-  },
+  loading(show, msg) { document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none'; if (msg) document.getElementById('loadingText').textContent = msg; },
   workerStatus(ok, missingKeys) {
-    const dot = document.getElementById('apiDot');
-    const lbl = document.getElementById('apiLabel');
+    const dot = document.getElementById('apiDot'), lbl = document.getElementById('apiLabel');
     if (ok && !missingKeys) { dot.className = 'api-dot ok';  lbl.textContent = 'Connected'; }
-    else if (ok)             { dot.className = 'api-dot err'; lbl.textContent = 'Missing secrets'; }
-    else                     { dot.className = 'api-dot err'; lbl.textContent = 'Worker error'; }
+    else if (ok) { dot.className = 'api-dot err'; lbl.textContent = 'Missing secrets'; }
+    else { dot.className = 'api-dot err'; lbl.textContent = 'Worker error'; }
   },
-
   showDataWarning(type, text) {
-    const el   = document.getElementById('dataWarning');
-    const icon = document.getElementById('dataWarningIcon');
-    const txt  = document.getElementById('dataWarningText');
-    el.className   = 'data-warning ' + type;
-    icon.textContent = type === 'failed' ? '✕' : '⚠';
-    txt.textContent  = text;
-    el.style.display = 'flex';
+    const el = document.getElementById('dataWarning'), icon = document.getElementById('dataWarningIcon'), txt = document.getElementById('dataWarningText');
+    el.className = 'data-warning ' + type; icon.textContent = type === 'failed' ? '✕' : '⚠'; txt.textContent = text; el.style.display = 'flex';
   },
-
-  hideDataWarning() {
-    document.getElementById('dataWarning').style.display = 'none';
-  },
-
+  hideDataWarning() { document.getElementById('dataWarning').style.display = 'none'; },
   updateScannerMeta(data) {
     const el = document.getElementById('scannerLastRun');
     if (!el || !data?.scanDate) return;
-    const scanDate    = new Date(data.scanDate + 'T12:00:00Z');
-    const completedAt = data.completedAt ? new Date(data.completedAt) : null;
-    const dateStr     = scanDate.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
-    const timeStr     = completedAt ? completedAt.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) + ' UTC' : '';
-    el.textContent = `Last scan: ${dateStr}${timeStr ? ' · ' + timeStr : ''} · ${data.scanned?.toLocaleString() || '—'} stocks screened · ${data.phase2 || '—'} deep analysed`;
+    const scanDate = new Date(data.scanDate + 'T12:00:00Z'), completedAt = data.completedAt ? new Date(data.completedAt) : null;
+    const dateStr = scanDate.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+    const timeStr = completedAt ? completedAt.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) + ' UTC' : '';
+    el.textContent = `Last scan: ${dateStr}${timeStr ? ' · ' + timeStr : ''} · ${data.scanned?.toLocaleString() || '—'} screened · ${data.phase2 || '—'} analysed`;
   },
-
   isStale(scanDate) {
     if (!scanDate) return false;
-    const scan    = new Date(scanDate + 'T12:00:00Z');
-    const now     = new Date();
-    const diffMs  = now - scan;
-    const diffDays = diffMs / (1000 * 60 * 60 * 24);
-    return diffDays > 1.5; 
+    return ((new Date() - new Date(scanDate + 'T12:00:00Z')) / (1000 * 60 * 60 * 24)) > 1.5; 
   },
-
-  updateIndicators(ind) {
-    const { price, ema20, ema50, ema200, vol, volAvg } = ind;
-    
-    const ab = (p, e, id, sid) => {
-      this.set(id, '$' + this.fmt(e));
-      this.setSig(sid, p && e ? (p > e ? 'Price above' : 'Price below') : '—', p && e ? (p > e ? 'bull' : 'bear') : '');
-    };
-    
-    ab(price, ema20,  'ib-ema20',  'ib-ema20-sig');
-    ab(price, ema50,  'ib-ema50',  'ib-ema50-sig');
-    ab(price, ema200, 'ib-ema200', 'ib-ema200-sig');
-
-    const ratio = vol && volAvg ? vol / volAvg : null;
-    this.set('ib-volavg', ratio ? ratio.toFixed(2)+'×' : '—');
-    if (ratio) this.setSig('ib-volavg-sig', ratio > 1.5 ? 'Volume surge' : ratio > 1 ? 'Above avg' : 'Below avg', ratio > 1.5 ? 'bull' : 'neutral');
-    
-    const ov = Ind.overall(ind);
-    const ovEl = document.getElementById('overallSignal');
-    if (ovEl) { ovEl.textContent = ov; ovEl.className = 'os-val ' + ov.toLowerCase(); }
-  },
-
   updateOHLCV(candles) {
     if (!candles?.length) return;
     const c = candles[candles.length-1];
-    this.set('ohlc-o', '$' + this.fmt(c.open));
-    this.set('ohlc-h', '$' + this.fmt(c.high));
-    this.set('ohlc-l', '$' + this.fmt(c.low));
-    this.set('ohlc-c', '$' + this.fmt(c.close));
+    this.set('ohlc-o', '$' + this.fmt(c.open)); this.set('ohlc-h', '$' + this.fmt(c.high));
+    this.set('ohlc-l', '$' + this.fmt(c.low)); this.set('ohlc-c', '$' + this.fmt(c.close));
     this.set('ohlc-v', this.fmtVol(c.volume));
     this.set('ohlc-d', new Date(c.time*1000).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }));
   },
-
   updateChartHeader(sym, price, changePct) {
-    this.set('chartSymbol', sym);
-    this.set('chartPrice',  price ? '$' + this.fmt(price) : '');
-    this.set('indSymLabel', sym);
+    this.set('chartSymbol', sym); this.set('chartPrice',  price ? '$' + this.fmt(price) : '');
     const chEl = document.getElementById('chartChange');
     if (chEl) {
-      if (changePct != null) {
-        chEl.textContent = (changePct >= 0 ? '+' : '') + this.fmt(changePct) + '%';
-        chEl.className   = 'chart-change ' + (changePct >= 0 ? 'pos' : 'neg');
-      } else { chEl.textContent = ''; chEl.className = 'chart-change'; }
+      if (changePct != null) { chEl.textContent = (changePct >= 0 ? '+' : '') + this.fmt(changePct) + '%'; chEl.className = 'chart-change ' + (changePct >= 0 ? 'pos' : 'neg'); } 
+      else { chEl.textContent = ''; chEl.className = 'chart-change'; }
     }
   }
 };
 
-// ── LOAD SYMBOL (chart) ───────────────────────────────────────
+// ── APP LOGIC ─────────────────────────────────────────────────
 async function loadSymbol(symbol) {
   STATE.activeSymbol = symbol;
-
-  document.querySelectorAll('.scan-card').forEach(c =>
-    c.classList.toggle('active', c.dataset.ticker === symbol)
-  );
-
-  if (STATE.isMobile) {
-    const chartSection = document.getElementById('chartSection');
-    if (chartSection) chartSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
+  document.querySelectorAll('.scan-card').forEach(c => c.classList.toggle('active', c.dataset.ticker === symbol));
+  if (STATE.isMobile) { const cs = document.getElementById('chartSection'); if (cs) cs.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  
   UI.loading(true, `Loading ${symbol}...`);
-
   try {
     const cacheKey = `${symbol}_${STATE.activeTf}`;
-    if (!STATE.ohlcvCache[cacheKey]) {
-      STATE.ohlcvCache[cacheKey] = await API.aggs(symbol, STATE.activeTf);
-    }
+    if (!STATE.ohlcvCache[cacheKey]) STATE.ohlcvCache[cacheKey] = await API.aggs(symbol, STATE.activeTf);
+    
     const candles = STATE.ohlcvCache[cacheKey];
-    const ind     = Ind.compute(candles);
+    const ind = Ind.compute(candles);
     STATE.indCache[cacheKey] = ind;
-
+    
     const pc = await API.prevClose(symbol);
     Charts.render(candles, ind);
-    UI.updateIndicators(ind);
     UI.updateOHLCV(candles);
     UI.updateChartHeader(symbol, ind.price, pc?.changePct);
-
-  } catch (err) {
-    console.error(err);
-    UI.toast(err.message, true);
-  }
-
+  } catch (err) { UI.toast(err.message, true); }
   UI.loading(false);
 }
 
-// ── AUTO-LOAD SCAN RESULTS ────────────────────────────────────
 async function loadScanResults() {
   const grid = document.getElementById('scanResultsGrid');
-
   try {
     const data = await API.scanResults();
-
     if (data.ok && data.results?.length) {
       localStorage.setItem('tsp_lastScan', JSON.stringify(data));
-      STATE.lastScan = data;
-      renderScanResults(data);
-      return;
+      STATE.lastScan = data; renderScanResults(data); return;
     }
-
-    if (data.scanFailed) {
-      UI.showDataWarning('failed', 'Last overnight scan failed — showing previous results if available. ' + (data.failReason || ''));
-    }
-
-    if (STATE.lastScan?.results?.length) {
-      renderScanResults(STATE.lastScan);
-      UI.toast('Showing previous scan · ' + (STATE.lastScan.scanDate || ''));
-      return;
-    }
-
-    grid.innerHTML = `
-      <div class="scan-empty">
-        <div class="scan-empty-icon">道</div>
-        <div class="scan-empty-title">No results yet</div>
-        <div class="scan-empty-sub">The overnight scan runs at midnight UTC.<br>Come back after 7am UK time for today's recommendations.</div>
-      </div>`;
-
+    if (data.scanFailed) UI.showDataWarning('failed', 'Last overnight scan failed. Showing previous results. ' + (data.failReason || ''));
+    if (STATE.lastScan?.results?.length) { renderScanResults(STATE.lastScan); UI.toast('Showing previous scan'); return; }
+    
+    grid.innerHTML = `<div class="scan-empty"><div class="scan-empty-icon">道</div><div class="scan-empty-title">No results yet</div><div class="scan-empty-sub">The scan runs at midnight UTC.</div></div>`;
   } catch (e) {
-    if (STATE.lastScan?.results?.length) {
-      renderScanResults(STATE.lastScan);
-      UI.toast('Offline — showing last saved scan');
-    } else {
-      grid.innerHTML = `
-        <div class="scan-empty">
-          <div class="scan-empty-icon">⚠</div>
-          <div class="scan-empty-title">Connection error</div>
-          <div class="scan-empty-sub">${e.message}</div>
-        </div>`;
-    }
+    if (STATE.lastScan?.results?.length) { renderScanResults(STATE.lastScan); UI.toast('Offline — showing last saved scan'); } 
+    else { grid.innerHTML = `<div class="scan-empty"><div class="scan-empty-icon">⚠</div><div class="scan-empty-title">Connection error</div><div class="scan-empty-sub">${e.message}</div></div>`; }
   }
 }
 
-// ── RENDER SCAN RESULTS ───────────────────────────────────────
 function renderScanResults(data) {
   const grid = document.getElementById('scanResultsGrid');
-
   UI.updateScannerMeta(data);
-
-  if (UI.isStale(data.scanDate)) {
-    UI.showDataWarning('stale',
-      `Scan data is from ${data.scanDate} — this may be from a previous session. Results refresh nightly at midnight UTC.`
-    );
-  } else if (!data.scanFailed) {
-    UI.hideDataWarning();
-  }
-
+  if (UI.isStale(data.scanDate)) UI.showDataWarning('stale', `Data is from ${data.scanDate}. Results refresh nightly.`); else if (!data.scanFailed) UI.hideDataWarning();
+  
   if (!data.results?.length) {
-    grid.innerHTML = `
-      <div class="scan-empty">
-        <div class="scan-empty-icon">道</div>
-        <div class="scan-empty-title">No setups found</div>
-        <div class="scan-empty-sub">No tickers met all scoring criteria on ${data.scanDate || 'last scan'}.<br>Results refresh nightly.</div>
-      </div>`;
-    return;
+    grid.innerHTML = `<div class="scan-empty"><div class="scan-empty-icon">道</div><div class="scan-empty-title">No setups found</div><div class="scan-empty-sub">No tickers met criteria on ${data.scanDate}.</div></div>`; return;
   }
-
+  
   grid.innerHTML = data.results.map((r, i) => renderScanCard(r, i)).join('');
-
-  const chartSection = document.getElementById('chartSection');
-  if (chartSection) grid.appendChild(chartSection);
-
-  const aiPanel = document.getElementById('aiPanelBox');
-  if (aiPanel) grid.appendChild(aiPanel);
-
-  grid.querySelectorAll('.scan-card').forEach(card => {
-    card.addEventListener('click', () => loadSymbol(card.dataset.ticker));
-  });
-
-  if (!STATE.isMobile && data.results[0]) {
-    loadSymbol(data.results[0].ticker);
-  }
+  
+  const chartSection = document.getElementById('chartSection'); if (chartSection) grid.appendChild(chartSection);
+  const aiPanel = document.getElementById('aiPanelBox'); if (aiPanel) grid.appendChild(aiPanel);
+  
+  grid.querySelectorAll('.scan-card').forEach(card => card.addEventListener('click', () => loadSymbol(card.dataset.ticker)));
+  if (!STATE.isMobile && data.results[0]) loadSymbol(data.results[0].ticker);
 }
 
-// ── RENDER SCAN CARD ──────────────────────────────────────────
 function renderScanCard(r, i) {
   const scoreClass = r.compositeScore >= 65 ? 'high' : r.compositeScore >= 45 ? 'mid' : '';
   const rrClass = r.rr >= 3 ? 'rr-good' : r.rr >= 2 ? 'rr-ok' : 'rr-low';
-
   return `
     <div class="scan-card" data-ticker="${r.ticker}" style="animation-delay:${i * 0.05}s">
       <div class="scan-card-header">
@@ -481,75 +284,48 @@ function renderScanCard(r, i) {
           <span class="scan-ticker">${r.ticker}</span>
         </div>
         <div class="scan-card-right">
-          <span class="scan-score-badge ${scoreClass}">${r.compositeScore}/100</span>
+          <span class="scan-score-badge ${scoreClass}" onclick="showScoreTooltip('volPrice', event)">${r.compositeScore}/100</span>
         </div>
       </div>
-
       <div class="scan-levels">
-        <div class="scan-level entry">
-          <span class="scan-level-lbl">Entry</span>
-          <span class="scan-level-val">$${r.entry}</span>
-        </div>
-        <div class="scan-level target">
-          <span class="scan-level-lbl">Target</span>
-          <span class="scan-level-val">$${r.target}</span>
-        </div>
-        <div class="scan-level stop">
-          <span class="scan-level-lbl">Stop</span>
-          <span class="scan-level-val">$${r.stopLoss}</span>
-        </div>
+        <div class="scan-level entry"><span class="scan-level-lbl">Entry</span><span class="scan-level-val">$${r.entry}</span></div>
+        <div class="scan-level target"><span class="scan-level-lbl">Target</span><span class="scan-level-val">$${r.target}</span></div>
+        <div class="scan-level stop"><span class="scan-level-lbl">Stop</span><span class="scan-level-val">$${r.stopLoss}</span></div>
       </div>
-
       <div class="scan-stats-row">
         <span>R:R <span class="scan-rr-val ${rrClass}">${r.rr}:1</span></span>
-        <span class="scan-stat-sep">·</span>
-        <span>RSI ${r.rsi}</span>
         <span class="scan-stat-sep">·</span>
         <span>Vol ${r.volRatio}×</span>
         <span class="scan-stat-sep">·</span>
         <span>${r.dailyReturn >= 0 ? '+' : ''}${r.dailyReturn}%</span>
       </div>
-    </div>
-  `; 
+    </div>`; 
 }
 
-// ── SCORE TOOLTIP ─────────────────────────────────────────────
+// ── VPA SCORE TOOLTIP & AI ────────────────────────────────────
 function showScoreTooltip(key, event) {
   event.stopPropagation(); 
-  const t = SCORE_TOOLTIPS[key];
-  if (!t) return;
+  const t = SCORE_TOOLTIPS[key]; if (!t) return;
   document.getElementById('scoreTooltipTitle').textContent = t.title;
   document.getElementById('scoreTooltipText').textContent  = t.text;
   document.getElementById('scoreTooltip').classList.add('open');
 }
-function closeScoreTooltip() {
-  document.getElementById('scoreTooltip').classList.remove('open');
-}
+function closeScoreTooltip() { document.getElementById('scoreTooltip').classList.remove('open'); }
 
-// ──  AI SUMMARY ─────────────────────────────────────────
 async function generateAISummary() {
   if (!STATE.activeSymbol) { UI.toast('Tap a result above first', true); return; }
   const cacheKey = `${STATE.activeSymbol}_${STATE.activeTf}`;
-  const ind = STATE.indCache[cacheKey];
-  const candles = STATE.ohlcvCache[cacheKey];
+  const ind = STATE.indCache[cacheKey], candles = STATE.ohlcvCache[cacheKey];
   if (!ind || !candles || !candles.length) { UI.toast('Load chart data first', true); return; }
 
-  const btn     = document.getElementById('btnAnalyze');
-  const content = document.getElementById('aiContent');
-  const status  = document.getElementById('aiStatus');
-  btn.disabled  = true;
-  status.textContent = 'Generating...';
-  content.innerHTML  = '<span class="ai-typing">Analysing VPA volume & spread</span>';
+  const btn = document.getElementById('btnAnalyze'), content = document.getElementById('aiContent'), status = document.getElementById('aiStatus');
+  btn.disabled = true; status.textContent = 'Generating...'; content.innerHTML = '<span class="ai-typing">Analysing VPA volume & spread</span>';
 
   const overall = Ind.overall(ind);
   const currentCandle = candles[candles.length - 1];
-  
-  // Calculate VPA-specific values locally for the prompt
   const spread = currentCandle.high - currentCandle.low;
   const closePos = spread > 0 ? (currentCandle.close - currentCandle.low) / spread : 0.5;
   const volRatio = ind.vol && ind.volAvg ? (ind.vol / ind.volAvg) : 1.0;
-  
-  // Determine Candle Type for the AI
   const candleBody = currentCandle.close >= currentCandle.open ? "Green/Bullish" : "Red/Bearish";
 
   const prompt = `You are an expert technical analyst practicing Anna Coulling's Volume Price Analysis. Provide a 3-sentence institutional-grade trade thesis for ${STATE.activeSymbol} using ONLY these pure VPA parameters:
@@ -563,72 +339,37 @@ Analyze the relationship between the Effort (volume) and Result (price spread/cl
 
   try {
     const result = await API.gemini(prompt);
-    content.innerHTML = `<div class="ai-text">${result.text}</div>`;
-    status.textContent = 'Analysis complete';
-  } catch (e) {
-    content.innerHTML = `<div class="ai-text" style="color:var(--red)">Error: ${e.message}</div>`;
-    status.textContent = '';
-  }
+    content.innerHTML = `<div class="ai-text">${result.text}</div>`; status.textContent = 'Analysis complete';
+  } catch (e) { content.innerHTML = `<div class="ai-text" style="color:var(--red)">Error: ${e.message}</div>`; status.textContent = ''; }
   btn.disabled = false;
-}
-// ── MARKET PILLS ──────────────────────────────────────────────
-async function loadMarketPills() {
-  for (const { sym, id } of [{ sym:'SPY', id:'spy-val' }, { sym:'QQQ', id:'qqq-val' }]) {
-    try {
-      const pc = await API.prevClose(sym);
-      if (pc) {
-        const el = document.getElementById(id);
-        if (el) {
-          el.textContent = '$' + UI.fmt(pc.price) + ' ' + (pc.changePct >= 0 ? '+' : '') + UI.fmt(pc.changePct) + '%';
-          el.className   = 'pill-val ' + (pc.changePct >= 0 ? 'pos' : 'neg');
-        }
-      }
-    } catch {}
-  }
-}
-
-// ── HEALTH CHECK ──────────────────────────────────────────────
-async function checkWorkerHealth() {
-  try {
-    const h = await API.health();
-    UI.workerStatus(h.ok, !h.polygon || !h.gemini);
-
-    if (h.scanFailed) {
-      UI.showDataWarning('failed',
-        'Last overnight scan failed — ' + (h.failReason || 'unknown error') + '. Previous results shown if available.'
-      );
-    }
-  } catch {
-    UI.workerStatus(false, false);
-  }
 }
 
 // ── INIT ──────────────────────────────────────────────────────
+async function loadMarketPills() {
+  for (const { sym, id } of [{ sym:'SPY', id:'spy-val' }, { sym:'QQQ', id:'qqq-val' }]) {
+    try { const pc = await API.prevClose(sym); if (pc) { const el = document.getElementById(id); if (el) { el.textContent = '$' + UI.fmt(pc.price) + ' ' + (pc.changePct >= 0 ? '+' : '') + UI.fmt(pc.changePct) + '%'; el.className = 'pill-val ' + (pc.changePct >= 0 ? 'pos' : 'neg'); } } } catch {}
+  }
+}
+async function checkWorkerHealth() {
+  try {
+    const h = await API.health(); UI.workerStatus(h.ok, !h.polygon || !h.gemini);
+    if (h.scanFailed) UI.showDataWarning('failed', 'Last scan failed — ' + (h.failReason || 'unknown error') + '. Previous results shown if available.');
+  } catch { UI.workerStatus(false, false); }
+}
+
 function init() {
   Charts.init();
-
-  window.addEventListener('resize', () => {
-    STATE.isMobile = window.innerWidth <= 900;
-  });
-
+  window.addEventListener('resize', () => { STATE.isMobile = window.innerWidth <= 900; });
   document.querySelectorAll('.tf-btn').forEach(btn => btn.addEventListener('click', () => {
-    document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    STATE.activeTf = parseInt(btn.dataset.tf);
-    if (STATE.activeSymbol) loadSymbol(STATE.activeSymbol);
+    document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active');
+    STATE.activeTf = parseInt(btn.dataset.tf); if (STATE.activeSymbol) loadSymbol(STATE.activeSymbol);
   }));
-
   document.querySelectorAll('.ov-btn').forEach(btn => btn.addEventListener('click', () => {
-    const ov = btn.dataset.ov;
-    STATE.overlays[ov] = !STATE.overlays[ov];
-    btn.classList.toggle('active', STATE.overlays[ov]);
+    const ov = btn.dataset.ov; STATE.overlays[ov] = !STATE.overlays[ov]; btn.classList.toggle('active', STATE.overlays[ov]);
     const ck = STATE.activeSymbol + '_' + STATE.activeTf;
     if (STATE.ohlcvCache[ck] && STATE.indCache[ck]) Charts.render(STATE.ohlcvCache[ck], STATE.indCache[ck]);
   }));
-
-  checkWorkerHealth();
-  loadScanResults();
-  loadMarketPills();
+  checkWorkerHealth(); loadScanResults(); loadMarketPills();
 }
 
 document.addEventListener('DOMContentLoaded', init);
