@@ -34,7 +34,7 @@ html, body {
   font-size: 14px;
   font-weight: 500;
   min-height: 100vh;
-  overflow-x: hidden; /* Prevents stray horizontal scrolls */
+  overflow-x: hidden;
 }
 
 .app-wrap { max-width: 1400px; margin: 0 auto; padding: 0 20px; }
@@ -78,24 +78,28 @@ main { padding: 24px 0; display: flex; flex-direction: column; gap: 24px; }
 .data-warning.stale { background: rgba(200,136,42,0.1); border: 1px solid var(--amber); color: var(--amber); }
 .data-warning.failed { background: rgba(201,64,64,0.1); border: 1px solid var(--red); color: var(--red); }
 
-/* GRID LAYOUT */
 .scan-results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
 
-/* BASE PANEL STYLES & MOBILE BLOWOUT FIX */
 .scan-card, .chart-section, .ai-panel {
   background: var(--chrome-1); border: 1px solid var(--chrome-4); border-radius: 8px; padding: 16px;
-  min-width: 0; /* Critical for mobile grid bounds */
-  word-wrap: break-word;
+  min-width: 0; word-wrap: break-word;
 }
 
 .scan-card { cursor: pointer; display: flex; flex-direction: column; gap: 10px; transition: all 0.2s; animation: slideIn 0.4s ease-out both; }
 .scan-card:hover { border-color: var(--sheen); transform: translateY(-2px); }
 .scan-card.active { border-color: var(--blue); background: rgba(74,127,168,0.05); }
 
-.scan-card-header { display: flex; justify-content: space-between; align-items: flex-start; }
-.scan-card-left { display: flex; align-items: baseline; gap: 8px; }
+.scan-card-header { display: flex; justify-content: space-between; align-items: center; }
+.scan-card-left { display: flex; align-items: center; gap: 8px; }
 .scan-rank { font-size: 12px; color: var(--sheen); font-weight: 600; }
 .scan-ticker { font-size: 22px; font-weight: 700; color: var(--white); }
+
+/* VPA PLAY TAG */
+.scan-play-tag {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--amber);
+  background: rgba(200,136,42,0.1); padding: 2px 6px; border-radius: 3px;
+  border: 1px solid rgba(200,136,42,0.2); margin-left: 2px;
+}
 
 .scan-score-badge { cursor: pointer; font-family: var(--mono); font-size: 12px; font-weight: 700; padding: 4px 8px; background: var(--chrome-3); color: var(--silver); border-radius: 4px; transition: 0.2s; }
 .scan-score-badge:hover { filter: brightness(1.2); }
@@ -107,7 +111,6 @@ main { padding: 24px 0; display: flex; flex-direction: column; gap: 24px; }
 .scan-level-lbl { display: block; font-size: 9px; color: var(--sheen); text-transform: uppercase; margin-bottom: 2px; font-weight: 700; letter-spacing: 0.05em; }
 .scan-level-val { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--silver); }
 
-/* WRAPPING FIX FOR MOBILE */
 .scan-stats-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; font-size: 11px; color: var(--steel); font-family: var(--mono); margin-top: 4px; }
 .scan-stat-sep { color: var(--edge); }
 .scan-rr-val { font-weight: 700; }
@@ -119,7 +122,6 @@ main { padding: 24px 0; display: flex; flex-direction: column; gap: 24px; }
 .scan-empty-icon { font-size: 32px; color: var(--edge); margin-bottom: 12px; }
 .scan-empty-title { font-size: 18px; font-weight: 700; color: var(--silver); margin-bottom: 8px; text-transform: uppercase; }
 
-/* SPAN FULL WIDTH */
 #chartSection, #aiPanelBox { grid-column: 1 / -1; width: 100%; }
 
 .chart-topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--chrome-3); padding-bottom: 12px; }
@@ -156,7 +158,6 @@ main { padding: 24px 0; display: flex; flex-direction: column; gap: 24px; }
 .ai-text { font-size: 14px; color: var(--silver); line-height: 1.6; }
 .ai-typing { display: inline-block; animation: pulse 1.5s infinite; color: var(--steel); }
 
-/* TOOLTIP MODAL */
 .score-tooltip-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(2px); z-index: 100; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
 .score-tooltip-overlay.open { opacity: 1; pointer-events: auto; }
 .score-tooltip-box { background: var(--chrome-1); border: 1px solid var(--chrome-4); border-radius: 8px; width: 90%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); transform: translateY(10px); transition: transform 0.2s; }
@@ -166,7 +167,6 @@ main { padding: 24px 0; display: flex; flex-direction: column; gap: 24px; }
 .btn-close-tooltip { background: transparent; border: none; color: var(--sheen); font-size: 16px; cursor: pointer; padding: 4px; line-height: 1; }
 .tooltip-body { padding: 16px; font-size: 13px; color: var(--silver); line-height: 1.6; white-space: pre-wrap; }
 
-/* UTILS */
 .loading-overlay { position: fixed; inset: 0; background: rgba(13,14,16,0.9); z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
 .loading-spinner { width: 32px; height: 32px; border: 3px solid var(--chrome-4); border-top-color: var(--blue); border-radius: 50%; animation: spin 1s linear infinite; }
 .loading-label { font-family: var(--mono); font-size: 12px; color: var(--sheen); text-transform: uppercase; letter-spacing: 0.1em; }
