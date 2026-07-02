@@ -1,6 +1,6 @@
 'use strict';
 /* ============================================================
-   TAOSCAN PRO — app.js  ·  VPA Production Edition (Mobile Fast)
+   TAOSCAN PRO — app.js  ·  VPA Production Edition
    ============================================================ */
 
 const WORKER_URL = 'https://taoscanpro.waddellb.workers.dev';
@@ -22,7 +22,7 @@ const STATE = {
   isMobile:     window.innerWidth <= 900
 };
 
-// ── PURE VPA MATH (No Lagging Oscillators) ────────────────────
+// ── PURE VPA MATH ─────────────────────────────────────────────
 const Ind = {
   ema(arr, period) {
     const k = 2 / (period + 1);
@@ -133,7 +133,6 @@ const Charts = {
     this.volS    = this.main.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'volume', scaleMargins: { top: 0.8, bottom: 0 } });
     this.main.priceScale('volume').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
 
-    // MOBILE ROBUST RESIZE
     const ro = new ResizeObserver(entries => {
       if (!this.main || !entries.length) return;
       const { width, height } = entries[0].contentRect;
@@ -276,12 +275,18 @@ function renderScanResults(data) {
 function renderScanCard(r, i) {
   const scoreClass = r.compositeScore >= 65 ? 'high' : r.compositeScore >= 45 ? 'mid' : '';
   const rrClass = r.rr >= 3 ? 'rr-good' : r.rr >= 2 ? 'rr-ok' : 'rr-low';
+  
+  // Extract and format the specific VPA type of play from the signals array
+  const playType = r.signals.find(s => s.startsWith('VPA:')) || 'VPA: Setup';
+  const displayTag = playType.replace('VPA: ', '');
+
   return `
     <div class="scan-card" data-ticker="${r.ticker}" style="animation-delay:${i * 0.05}s">
       <div class="scan-card-header">
         <div class="scan-card-left">
           <span class="scan-rank">#${r.rank}</span>
           <span class="scan-ticker">${r.ticker}</span>
+          <span class="scan-play-tag">${displayTag}</span>
         </div>
         <div class="scan-card-right">
           <span class="scan-score-badge ${scoreClass}" onclick="showScoreTooltip('volPrice', event)">${r.compositeScore}/100</span>
