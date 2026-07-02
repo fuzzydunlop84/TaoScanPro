@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>TaoScan Pro — Autonomous Market Scanner</title>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
@@ -15,7 +15,7 @@
   <header>
     <div class="logo-group">
       <div class="logo">TaoScan<span class="logo-pro"> Pro</span></div>
-      <div class="tagline">The market speaks. Are you listening?</div>
+      <div class="tagline">The tape speaks. Are you listening?</div>
     </div>
     <div class="header-right">
       <div class="market-pills">
@@ -55,7 +55,7 @@
       
       <div class="ai-panel" id="aiPanelBox">
           <div class="panel-hd">
-            <span class="panel-hd-title">AI Analysis</span>
+            <span class="panel-hd-title">AI VPA Analysis</span>
             <span class="ai-model-tag">Groq · LLaMA 3.3 70b</span>
           </div>
           <div class="ai-controls">
@@ -73,7 +73,7 @@
 
       <div class="chart-topbar">
         <div class="chart-symbol-group">
-          <span class="chart-symbol" id="chartSymbol">Tap a result above</span>
+          <span class="chart-symbol" id="chartSymbol">Tap a result</span>
           <span class="chart-price" id="chartPrice"></span>
           <span class="chart-change" id="chartChange"></span>
         </div>
@@ -90,7 +90,7 @@
         <div class="chart-controls">
           <div class="tf-group">
             <button class="tf-btn active" data-tf="90">3M (Execution)</button>
-            <button class="tf-btn" data-tf="365">1Y (Macro Trend)</button>
+            <button class="tf-btn" data-tf="365">1Y (Macro)</button>
           </div>
           <div class="ov-group">
             <button class="ov-btn active" data-ov="ema20">EMA20</button>
@@ -117,8 +117,8 @@
   </main>
 </div>
 
-<div class="score-tooltip-overlay" id="scoreTooltip">
-  <div class="score-tooltip-box">
+<div class="score-tooltip-overlay" id="scoreTooltip" onclick="closeScoreTooltip()">
+  <div class="score-tooltip-box" onclick="event.stopPropagation()">
     <div class="tooltip-hd">
       <h3 id="scoreTooltipTitle">Score Component</h3>
       <button class="btn-close-tooltip" onclick="closeScoreTooltip()">✕</button>
