@@ -41,6 +41,18 @@ const SCORE_TOOLTIPS = {
   'Continuation': {
     title: 'Trend Continuation',
     text: 'Institutional Action:\n\nA healthy, orderly day of trend continuation. While it lacks a massive structural anomaly or market maker manipulation footprint today, the stock exhibits robust moving average alignments and institutional volume support.'
+  },
+   'EMA20 Breakout': {
+    title: 'EMA20 High-Volume Breakout',
+    text: 'Institutional Action:\n\nHeavy institutional volume has forcefully driven the price back above the short-term 20-day moving average, signaling a sudden return of bullish momentum and the potential start of a new swing cycle.'
+  },
+  'EMA50 Breakout': {
+    title: 'EMA50 High-Volume Breakout',
+    text: 'Institutional Action:\n\nA major structural shift. Institutions have stepped in with massive volume to clear the 50-day moving average, absorbing overhead supply and signaling a highly probable mid-term trend reversal.'
+  },
+  'EMA200 Breakout': {
+    title: 'EMA200 High-Volume Breakout',
+    text: 'Institutional Action:\n\nA regime change. The stock has crossed the most important long-term institutional benchmark on heavy volume, triggering algorithmic buying programs across major funds.'
   }
 };
 
