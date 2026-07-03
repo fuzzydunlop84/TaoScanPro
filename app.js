@@ -323,9 +323,9 @@ function renderScanCard(r, i) {
   const playType = r.signals.find(s => s.startsWith('VPA:')) || 'VPA: Continuation';
   const displayTag = playType.replace('VPA: ', '');
 
-  // Dynamic color router
+// Dynamic color router
   let colorClass = 'tag-grey';
-  if (['Breakout', 'Breakaway Gap'].includes(displayTag)) colorClass = 'tag-green';
+  if (['Breakout', 'Breakaway Gap', 'EMA20 Breakout', 'EMA50 Breakout', 'EMA200 Breakout'].includes(displayTag)) colorClass = 'tag-green';
   else if (['Shakeout Spring', 'Gap Fill Bounce'].includes(displayTag)) colorClass = 'tag-blue';
   else if (['Stopping Vol', 'Gap Down Absorption'].includes(displayTag)) colorClass = 'tag-amber';
   else if (['The Test', 'No Supply'].includes(displayTag)) colorClass = 'tag-steel';
